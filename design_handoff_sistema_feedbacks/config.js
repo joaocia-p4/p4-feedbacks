@@ -9,5 +9,5 @@
   var local = h === 'localhost' || h === '127.0.0.1' || location.protocol === 'file:';
   window.P4_API_BASE = local
     ? 'http://localhost:4000'
-    : 'https://SEU-BACKEND.onrender.com';
+    : 'https://p4-feedbacks-api.onrender.com';
 })();
