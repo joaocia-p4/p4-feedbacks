@@ -11,9 +11,12 @@ const config = {
   isProd,
   port: Number(process.env.PORT || 4000),
 
+  // Origens permitidas no CORS. Normalizamos removendo a barra final ("/") —
+  // o navegador envia a origem sem barra, então tolerar isso evita um erro
+  // comum de configuração (ex.: CORS_ORIGIN="https://site.vercel.app/").
   corsOrigin: (process.env.CORS_ORIGIN || '*')
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean),
 
   jwt: {
