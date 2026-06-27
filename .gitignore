@@ -1,0 +1,25 @@
+# ─── Dependências ────────────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ─── Segredos / ambiente ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# ─── Banco de dados local (SEUS DADOS REAIS — nunca subir) ───────────────────
+data/
+**/data/
+*.sqlite
+*.sqlite3
+*.db
+
+# ─── Logs / misc ─────────────────────────────────────────────────────────────
+*.log
+.DS_Store
+Thumbs.db
+coverage/
+dist/
+.vercel/

@@ -1,0 +1,16 @@
+node_modules/
+*.log
+.env
+.env.local
+.env.*.local
+
+# Banco SQLite local (gerado pelas migrations/seed)
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Misc
+.DS_Store
+coverage/
+dist/
