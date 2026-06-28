@@ -110,6 +110,11 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const isToday = dueDate === window.P4_TODAY;
 
   const lateN = scoped.filter((c) => c.status === 'atrasado').length;
+  const emDia = scoped.length - lateN;
+  const totalMk = scoped.reduce((a, c) => a + ((c.contas && c.contas.length) || (c.marketplaces && c.marketplaces.length) || 0), 0);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const firstName = (user && user.nome) ? user.nome.split(' ')[0] : '';
 
   return (
     <div className="shell">
@@ -118,6 +123,7 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
         <div className="page-inner">
           <div className="ch-top">
             <div>
+              <div className="ch-eyebrow">{greeting}, {firstName} 👋</div>
               <h1>{dueOn ? 'Feedbacks para enviar' : (seesAll ? 'Todos os clientes' : 'Meus clientes')}</h1>
               <div className="ch-sub">
                 {dueOn
@@ -134,6 +140,29 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
                   </button>
                 : null}
               {canManage ? <button className="btn-accent" onClick={onNewClient}><I.plus size={16} /> Adicionar cliente</button> : null}
+            </div>
+          </div>
+
+          <div className="kpis" style={{ marginBottom: 22 }}>
+            <div className="kpi">
+              <div className="k">Clientes</div>
+              <div className="v">{scoped.length}</div>
+              <div className="trend" style={{ color: 'var(--muted)' }}>{totalMk} {totalMk === 1 ? 'marketplace' : 'marketplaces'}</div>
+            </div>
+            <div className="kpi">
+              <div className="k">Em dia</div>
+              <div className="v" style={{ color: 'var(--green-ink)' }}>{emDia}</div>
+              <div className="trend" style={{ color: 'var(--muted)' }}>{scoped.length ? Math.round((emDia / scoped.length) * 100) : 0}% da base</div>
+            </div>
+            <div className="kpi">
+              <div className="k">Atrasados</div>
+              <div className="v" style={{ color: lateN ? 'var(--red)' : 'var(--ink)' }}>{lateN}</div>
+              <div className="trend" style={{ color: lateN ? 'var(--red)' : 'var(--muted)' }}>{lateN ? 'precisam de atenção' : 'tudo certo'}</div>
+            </div>
+            <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => setDueOn(true)} title="Ver feedbacks para enviar">
+              <div className="k">Para enviar</div>
+              <div className="v">{dueCount}</div>
+              <div className="trend" style={{ color: 'var(--muted)' }}>{isToday ? 'na data de hoje' : window.brShort(dueDate)}</div>
             </div>
           </div>
 
