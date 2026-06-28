@@ -38,18 +38,44 @@ body{
 .mono{font-family:'JetBrains Mono',monospace}
 
 /* ============================================================= LOGIN */
-.login{
-  height:100vh;display:flex;align-items:center;justify-content:center;
+.login{display:flex;min-height:100vh;background:#0b120f;color:var(--panel-txt)}
+
+/* Painel da marca (esquerda) */
+.login-aside{
+  flex:0 0 46%;max-width:620px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:space-between;padding:52px 56px;
   background:
-    radial-gradient(880px 540px at 18% -10%, rgba(var(--accent-rgb),.16), transparent 60%),
-    radial-gradient(680px 480px at 110% 120%, rgba(var(--accent-rgb),.10), transparent 55%),
-    #11181f;
-  padding:24px;position:relative;overflow:hidden;
+    radial-gradient(720px 520px at 18% 0%, rgba(var(--accent-rgb),.22), transparent 60%),
+    radial-gradient(560px 520px at 120% 115%, rgba(var(--accent-rgb),.12), transparent 55%),
+    linear-gradient(160deg,#10201a,#0b120f 72%);
+  border-right:1px solid rgba(255,255,255,.06);
 }
-.login::before{
+.login-aside::before{
   content:"";position:absolute;inset:0;opacity:.5;pointer-events:none;
-  background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
-  background-size:46px 46px;mask-image:radial-gradient(900px 600px at 30% 20%,#000,transparent 80%);
+  background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:44px 44px;mask-image:radial-gradient(700px 520px at 25% 12%,#000,transparent 80%);
+}
+.la-top{position:relative;display:flex;align-items:center;gap:12px}
+.la-top img{width:42px;height:42px;object-fit:contain;filter:drop-shadow(0 0 16px rgba(var(--accent-rgb),.45))}
+.la-brand{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.la-mid{position:relative;max-width:440px}
+.la-tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--panel-mut);margin-bottom:14px}
+.la-head{font-size:30px;line-height:1.18;font-weight:800;letter-spacing:-.02em;color:#fff;margin:0 0 28px}
+.la-feats{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.la-feats li{display:flex;align-items:flex-start;gap:12px;font-size:14px;font-weight:500;color:#cdd8d2}
+.la-feats .fi{width:24px;height:24px;border-radius:7px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(var(--accent-rgb),.16);color:var(--accent);margin-top:1px}
+.la-foot{position:relative;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--panel-mut)}
+
+/* Área do formulário (direita) */
+.login-main{
+  flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px;
+  background:radial-gradient(720px 520px at 82% -8%, rgba(var(--accent-rgb),.10), transparent 60%),#11181f;
+}
+.login-card .login-brand{display:none}
+
+@media (max-width:880px){
+  .login-aside{display:none}
+  .login-card .login-brand{display:flex}
 }
 .login-card{
   position:relative;z-index:1;width:100%;max-width:404px;

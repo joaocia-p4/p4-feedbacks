@@ -45,8 +45,30 @@ function Login({ onLogin }) {
     onLogin(u);
   };
 
+  const Check = () => (
+    <span className="fi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
+  );
+
   return (
     <div className="login">
+      <aside className="login-aside">
+        <div className="la-top">
+          <img src="assets/p4-mark-white.png" alt="P4" />
+          <span className="la-brand">Método P4</span>
+        </div>
+        <div className="la-mid">
+          <div className="la-tag">Sistema de Feedbacks</div>
+          <h2 className="la-head">Relatórios de performance dos seus clientes, sob controle.</h2>
+          <ul className="la-feats">
+            <li><Check /> Relatórios automáticos e padronizados</li>
+            <li><Check /> Integração com o Mercado Livre</li>
+            <li><Check /> Acompanhamento de metas e prazos de envio</li>
+          </ul>
+        </div>
+        <div className="la-foot">Método P4 · Performance em marketplaces</div>
+      </aside>
+
+      <main className="login-main">
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           <img src="assets/p4-mark-white.png" alt="P4" />
@@ -56,8 +78,8 @@ function Login({ onLogin }) {
           </div>
         </div>
 
-        <h1>Entrar</h1>
-        <p className="sub">Acesse o painel para gerar e acompanhar relatórios dos seus clientes.</p>
+        <h1>Bem-vindo de volta</h1>
+        <p className="sub">Entre para gerar e acompanhar os relatórios dos seus clientes.</p>
 
         {err ? <div className="login-err"><span>⚠</span>{err}</div> : null}
 
@@ -98,6 +120,7 @@ function Login({ onLogin }) {
           Precisa de acesso? <a className="link" onClick={() => alert('Fale com o administrador do sistema.')}>Solicitar convite</a>
         </div>
       </form>
+      </main>
     </div>
   );
 }
