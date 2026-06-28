@@ -836,20 +836,16 @@ function App() {
       const int = (n) => String(Math.round(Number(n) || 0));
       setD((p) => ({
         ...p,
-        faturamento: money(r.faturamento),
-        vendas: int(r.vendas),
         receitaAds: money(r.receitaAds),
         vendasAds: int(r.vendasAds),
         investimento: money(r.investimento),
       }));
       const adsErr = r.ads && r.ads.erro;
-      const sb = r.byStatus ? Object.keys(r.byStatus).sort((a, b) => r.byStatus[b].n - r.byStatus[a].n).map((s) => `${s}:${r.byStatus[s].n}`).join(' · ') : '';
       setMlMsg({
         err: false,
-        t: `Preenchido: ${r.pedidos} pedido(s) · fat. R$ ${money(r.faturamento)} · invest. R$ ${money(r.investimento)}` +
-          (adsErr ? ' · ⚠ Ads não retornou (confira o acesso de Publicidade)' : ` · ${r.ads.campanhas} campanha(s)`) +
-          (r.pedidosTruncados ? ' · ⚠ algum dia passou de 1000 pedidos' : '') +
-          (sb ? ` · status → ${sb}` : ''),
+        t: adsErr
+          ? '⚠ Ads não retornou — confira o acesso de Publicidade do app no Mercado Livre.'
+          : `Ads preenchidos: investimento R$ ${money(r.investimento)} · receita R$ ${money(r.receitaAds)} · ${r.ads.campanhas} campanha(s). Agora cole Faturamento e Vendas da página de Métricas do ML.`,
       });
     } catch (e) {
       setMlMsg({ err: true, t: e.message || 'Falha ao buscar dados do Mercado Livre' });
@@ -965,7 +961,7 @@ function App() {
                   <span style={{ fontWeight: 800 }}>ML</span> {mlBusy ? 'Buscando dados…' : 'Puxar do Mercado Livre'}
                 </button>
                 {mlMsg ? <div style={{ fontSize: 11.5, marginTop: 7, color: mlMsg.err ? 'var(--red,#d8423a)' : 'var(--green-ink,#2f9a2b)' }}>{mlMsg.t}</div> : null}
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>Preenche faturamento, vendas, receita e investimento de Ads do período (revise antes de salvar).</div>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>Preenche os dados de <b>Ads</b> (investimento, receita e vendas de Ads). <b>Faturamento</b> e <b>Vendas totais</b>: copie da <a href="https://www.mercadolivre.com.br/metricas" target="_blank" rel="noopener" style={{ color: 'inherit', textDecoration: 'underline' }}>página de Métricas</a> do Mercado Livre.</div>
               </div>
             ) : null}
             <div className="row2">

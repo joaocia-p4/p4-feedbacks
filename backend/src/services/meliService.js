@@ -167,120 +167,14 @@ async function apiGet(accountId, path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// Lista as datas (YYYY-MM-DD) de `from` até `to`, inclusive. Usa meio-dia UTC
-// para não escorregar de dia por fuso.
-function datesInRange(from, to) {
-  const out = [];
-  const d = new Date(from + 'T12:00:00Z');
-  const end = new Date(to + 'T12:00:00Z');
-  if (isNaN(d.getTime()) || isNaN(end.getTime())) return [from];
-  while (d <= end && out.length < 400) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setUTCDate(d.getUTCDate() + 1);
-  }
-  return out;
-}
-
-function addDays(ymd, n) {
-  const d = new Date(ymd + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-// Data (YYYY-MM-DD, horário de Brasília) de um timestamp ISO.
-function brtDate(iso) {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(d);
-  } catch (_e) {
-    return String(iso).slice(0, 10);
-  }
-}
-
-// Data de aprovação do pagamento (quando a venda de fato aconteceu). Pedidos sem
-// pagamento aprovado não são "venda". Inclui aprovados que depois foram
-// cancelados/devolvidos (o date_approved permanece) — como as "vendas brutas".
-function approvalDateOf(o) {
-  const ps = o.payments || [];
-  for (const p of ps) { if (p && p.date_approved) return p.date_approved; }
-  return o.date_closed || null;
-}
-
-// Busca os pedidos CRIADOS em `createdDay` (paginado) e conta apenas os que foram
-// APROVADOS dentro de `targetDays`, agrupados por status. A busca do ML limita o
-// offset a 1000; como um dia raramente passa disso, sai completo.
-async function fetchDayOrders(accountId, sellerId, createdDay, targetDays) {
-  const fromISO = `${createdDay}T00:00:00.000-03:00`;
-  const toISO = `${createdDay}T23:59:59.999-03:00`;
-  const buckets = {}; // status → { n, fat, un }
-  let trunc = false, offset = 0;
-  for (let i = 0; i < 30; i++) {
-    const q =
-      `/orders/search?seller=${sellerId}` +
-      `&order.date_created.from=${encodeURIComponent(fromISO)}` +
-      `&order.date_created.to=${encodeURIComponent(toISO)}` +
-      `&sort=date_asc&limit=50&offset=${offset}`;
-    const r = await apiGet(accountId, q);
-    if (!r.ok) break;
-    const results = r.data.results || [];
-    for (const o of results) {
-      const apprIso = approvalDateOf(o);
-      if (!apprIso) continue; // sem pagamento aprovado → não é venda
-      if (!targetDays.has(brtDate(apprIso))) continue; // aprovado fora do período
-      const st = o.status || 'desconhecido';
-      const b = buckets[st] || (buckets[st] = { n: 0, fat: 0, un: 0 });
-      b.n += 1;
-      b.fat += o.total_amount || 0;
-      b.un += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
-    }
-    const total = r.data.paging ? r.data.paging.total : results.length;
-    offset += 50;
-    if (offset >= total || results.length === 0) break;
-    if (offset >= 1000) { trunc = true; break; }
-  }
-  return { buckets, trunc };
-}
-
-// Junta os dados de um período (YYYY-MM-DD) para preencher um relatório:
-// vendas/faturamento (API de Pedidos) + investimento/receita/vendas de Ads
-// (API de Publicidade, somando todas as campanhas).
+// Junta os dados de Publicidade (Product Ads) de um período (YYYY-MM-DD) para
+// preencher o relatório: investimento, receita e vendas de Ads (somando todas as
+// campanhas). Faturamento/Vendas totais NÃO vêm daqui — o painel "Métricas" do ML
+// usa um agregado interno não reproduzível pela API pública; esses 2 ficam manuais.
 async function reportData(accountId, from, to) {
   const me = await apiGet(accountId, '/users/me');
   const sellerId = me.ok ? me.data.id : null;
   const siteId = (me.ok && me.data.site_id) || 'MLB';
-
-  // ── Pedidos pagos no período (dia a dia, em paralelo) ──
-  // Quebrar por dia evita o limite de offset (1000) da busca de pedidos do ML,
-  // que truncava contas de alto volume. Pré-renovamos o token antes do disparo
-  // paralelo (o refresh do ML rotaciona o refresh_token e não pode correr junto).
-  // Vendas BRUTAS = pedidos aprovados (pagamento) dentro do período, como o painel
-  // do ML (não desconta cancelamentos/devoluções). Buscamos por data de criação
-  // numa janela com folga (pedidos criados antes e aprovados dentro contam) e
-  // filtramos pela data de aprovação.
-  let faturamento = 0;
-  let vendas = 0;
-  let pedidos = 0;
-  let pedidosTruncados = false;
-  const byStatus = {}; // status → { n, fat, un }
-  if (sellerId) {
-    try { await getValidAccessToken(accountId); } catch (_e) {}
-    const targetDays = new Set(datesInRange(from, to));
-    const fetchDays = datesInRange(addDays(from, -4), to);
-    const perDay = await Promise.all(fetchDays.map((day) => fetchDayOrders(accountId, sellerId, day, targetDays)));
-    for (const r of perDay) {
-      if (r.trunc) pedidosTruncados = true;
-      for (const [st, b] of Object.entries(r.buckets)) {
-        const t = byStatus[st] || (byStatus[st] = { n: 0, fat: 0, un: 0 });
-        t.n += b.n; t.fat += b.fat; t.un += b.un;
-        faturamento += b.fat;
-        vendas += b.un;
-        pedidos += b.n;
-      }
-    }
-  }
 
   // ── Anúncios (Product Ads), somando as campanhas ──
   let investimento = 0;
@@ -326,11 +220,6 @@ async function reportData(accountId, from, to) {
   return {
     periodo: { from, to },
     vendedor: { id: sellerId, site: siteId, nickname: me.ok ? me.data.nickname : null },
-    faturamento,
-    vendas,
-    pedidos,
-    pedidosTruncados,
-    byStatus,
     investimento,
     receitaAds,
     vendasAds,
