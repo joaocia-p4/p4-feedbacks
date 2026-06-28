@@ -181,14 +181,42 @@ function datesInRange(from, to) {
   return out;
 }
 
-// Pedidos de UM dia (paginado), agrupados por status. Sem filtro de status na
-// busca — a classificação (o que conta como venda) é feita depois. A busca do
-// ML limita o offset a 1000; como um dia raramente passa disso, sai completo.
-async function fetchDayOrders(accountId, sellerId, day) {
-  const fromISO = `${day}T00:00:00.000-03:00`;
-  const toISO = `${day}T23:59:59.999-03:00`;
+function addDays(ymd, n) {
+  const d = new Date(ymd + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Data (YYYY-MM-DD, horário de Brasília) de um timestamp ISO.
+function brtDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+  } catch (_e) {
+    return String(iso).slice(0, 10);
+  }
+}
+
+// Data de aprovação do pagamento (quando a venda de fato aconteceu). Pedidos sem
+// pagamento aprovado não são "venda". Inclui aprovados que depois foram
+// cancelados/devolvidos (o date_approved permanece) — como as "vendas brutas".
+function approvalDateOf(o) {
+  const ps = o.payments || [];
+  for (const p of ps) { if (p && p.date_approved) return p.date_approved; }
+  return o.date_closed || null;
+}
+
+// Busca os pedidos CRIADOS em `createdDay` (paginado) e conta apenas os que foram
+// APROVADOS dentro de `targetDays`, agrupados por status. A busca do ML limita o
+// offset a 1000; como um dia raramente passa disso, sai completo.
+async function fetchDayOrders(accountId, sellerId, createdDay, targetDays) {
+  const fromISO = `${createdDay}T00:00:00.000-03:00`;
+  const toISO = `${createdDay}T23:59:59.999-03:00`;
   const buckets = {}; // status → { n, fat, un }
-  let total = 0, trunc = false, offset = 0;
+  let trunc = false, offset = 0;
   for (let i = 0; i < 30; i++) {
     const q =
       `/orders/search?seller=${sellerId}` +
@@ -199,18 +227,21 @@ async function fetchDayOrders(accountId, sellerId, day) {
     if (!r.ok) break;
     const results = r.data.results || [];
     for (const o of results) {
+      const apprIso = approvalDateOf(o);
+      if (!apprIso) continue; // sem pagamento aprovado → não é venda
+      if (!targetDays.has(brtDate(apprIso))) continue; // aprovado fora do período
       const st = o.status || 'desconhecido';
       const b = buckets[st] || (buckets[st] = { n: 0, fat: 0, un: 0 });
       b.n += 1;
       b.fat += o.total_amount || 0;
       b.un += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
     }
-    total = r.data.paging ? r.data.paging.total : results.length;
+    const total = r.data.paging ? r.data.paging.total : results.length;
     offset += 50;
     if (offset >= total || results.length === 0) break;
     if (offset >= 1000) { trunc = true; break; }
   }
-  return { buckets, total, trunc };
+  return { buckets, trunc };
 }
 
 // Junta os dados de um período (YYYY-MM-DD) para preencher um relatório:
@@ -225,30 +256,29 @@ async function reportData(accountId, from, to) {
   // Quebrar por dia evita o limite de offset (1000) da busca de pedidos do ML,
   // que truncava contas de alto volume. Pré-renovamos o token antes do disparo
   // paralelo (o refresh do ML rotaciona o refresh_token e não pode correr junto).
+  // Vendas BRUTAS = pedidos aprovados (pagamento) dentro do período, como o painel
+  // do ML (não desconta cancelamentos/devoluções). Buscamos por data de criação
+  // numa janela com folga (pedidos criados antes e aprovados dentro contam) e
+  // filtramos pela data de aprovação.
   let faturamento = 0;
   let vendas = 0;
   let pedidos = 0;
   let pedidosTruncados = false;
   const byStatus = {}; // status → { n, fat, un }
-  // "Vendas brutas" do painel do ML inclui as canceladas (mostradas à parte),
-  // então contamos tudo e excluímos só inválidas/teste.
-  const EXCLUDE = new Set(['invalid']);
   if (sellerId) {
     try { await getValidAccessToken(accountId); } catch (_e) {}
-    const days = datesInRange(from, to);
-    const perDay = await Promise.all(days.map((day) => fetchDayOrders(accountId, sellerId, day)));
+    const targetDays = new Set(datesInRange(from, to));
+    const fetchDays = datesInRange(addDays(from, -4), to);
+    const perDay = await Promise.all(fetchDays.map((day) => fetchDayOrders(accountId, sellerId, day, targetDays)));
     for (const r of perDay) {
       if (r.trunc) pedidosTruncados = true;
       for (const [st, b] of Object.entries(r.buckets)) {
         const t = byStatus[st] || (byStatus[st] = { n: 0, fat: 0, un: 0 });
         t.n += b.n; t.fat += b.fat; t.un += b.un;
+        faturamento += b.fat;
+        vendas += b.un;
+        pedidos += b.n;
       }
-    }
-    for (const [st, b] of Object.entries(byStatus)) {
-      if (EXCLUDE.has(st)) continue;
-      faturamento += b.fat;
-      vendas += b.un;
-      pedidos += b.n;
     }
   }
 
