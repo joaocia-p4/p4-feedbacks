@@ -206,7 +206,7 @@ function UsersModal({ me, onClose, toast }) {
     }
   };
 
-  const inp = { width: '100%', padding: '9px 11px', borderRadius: 9, border: '1px solid var(--line)', fontSize: 13, fontFamily: 'inherit', background: 'var(--paper)', color: 'inherit', boxSizing: 'border-box' };
+  const inp = { width: '100%', padding: '9px 11px', borderRadius: 9, border: '1px solid var(--line)', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'inherit', boxSizing: 'border-box' };
   const lab = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 5, display: 'block' };
 
   return (
@@ -225,7 +225,7 @@ function UsersModal({ me, onClose, toast }) {
         </div>
 
         {!live ? (
-          <div style={{ padding: '12px 22px', background: 'rgba(224,146,47,.13)', borderBottom: '1px solid var(--line)', fontSize: 12.5, color: '#f3b15f', lineHeight: 1.5 }}>
+          <div style={{ padding: '12px 22px', background: '#fff7ed', borderBottom: '1px solid var(--line)', fontSize: 12.5, color: '#9a3412', lineHeight: 1.5 }}>
             {backendUp
               ? <>⚠ Sessão em <b>modo demonstração</b> — o que você criar aqui <b>não é salvo no banco</b>. Saia (avatar → Sair) e entre novamente com seu e-mail e senha (admin: <b>diego@metodop4.com</b> / <b>metodop4</b>) para gravar de verdade.</>
               : <>⚠ <b>Backend offline</b> — alterações ficam só em memória (modo protótipo). Inicie a API (<code>npm start</code>) para salvar no banco.</>}
@@ -233,7 +233,7 @@ function UsersModal({ me, onClose, toast }) {
         ) : null}
 
         {showForm ? (
-          <form onSubmit={submit} style={{ padding: '16px 22px', borderBottom: '1px solid var(--line)', background: 'rgba(255,255,255,.04)' }}>
+          <form onSubmit={submit} style={{ padding: '16px 22px', borderBottom: '1px solid var(--line)', background: '#f6f8f6' }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>{editingId ? 'Editar usuário' : 'Novo usuário'}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>

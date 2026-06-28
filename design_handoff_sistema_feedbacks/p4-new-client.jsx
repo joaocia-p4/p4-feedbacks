@@ -114,7 +114,7 @@ function MeliConnect({ accId, marketplace }) {
         <div style={{ marginTop: 10 }}>
           <div style={{ ...row, gap: 8 }}>
             <input readOnly value={link} onFocus={(e) => { try { e.target.select(); } catch (_) {} }}
-                   style={{ flex: 1, minWidth: 240, border: '1px solid var(--line,#e9ece9)', borderRadius: 9, padding: '8px 11px', fontSize: 12, fontFamily: "'JetBrains Mono',monospace", background: 'var(--paper)', color: 'inherit' }} />
+                   style={{ flex: 1, minWidth: 240, border: '1px solid var(--line,#e9ece9)', borderRadius: 9, padding: '8px 11px', fontSize: 12, fontFamily: "'JetBrains Mono',monospace", background: '#fff', color: 'inherit' }} />
             <button type="button" className="btn-accent" style={sm} onClick={copy}>{copied ? 'Copiado! ✓' : 'Copiar'}</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
@@ -303,7 +303,7 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
                 onChange={(e) => setObservacoes(e.target.value)}
                 placeholder="Ex.: contato preferencial, particularidades, histórico, próximos passos…"
                 rows="4"
-                style={{ width: '100%', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', background: 'var(--paper)', color: 'inherit' }}
+                style={{ width: '100%', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', background: '#fff', color: 'inherit' }}
               />
             </div>
           </div>
