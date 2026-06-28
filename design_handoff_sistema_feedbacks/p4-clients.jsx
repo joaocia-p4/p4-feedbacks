@@ -74,7 +74,7 @@ function ClientRow({ c, onOpen }) {
   );
 }
 
-function Clients({ user, role, layout, clients, loading, onOpenClient, onEditClient, onLogout, onManageUsers, onNewClient, onGotoDashboard, toast }) {
+function Clients({ user, role, layout, clients, loading, onOpenClient, onEditClient, onLogout, onManageUsers, onNewClient, onImport, onGotoDashboard, toast }) {
   const I = window.Icons;
   const [q, setQ] = React.useState('');
   const [mk, setMk] = React.useState('Todos');
@@ -139,6 +139,7 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
                     Painel
                   </button>
                 : null}
+              {canManage && onImport ? <button className="btn-line" onClick={onImport}><I.upload size={16} /> Importar planilha</button> : null}
               {canManage ? <button className="btn-accent" onClick={onNewClient}><I.plus size={16} /> Adicionar cliente</button> : null}
             </div>
           </div>

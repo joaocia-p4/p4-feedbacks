@@ -327,6 +327,7 @@ function App() {
   }); // dashboard | clients | history | new | edit
   const [clientId, setClientId] = useState(null);
   const [usersOpen, setUsersOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
 
   // Conectado ao backend? (há token). Senão, usa os dados mock (window.P4_*).
@@ -497,7 +498,7 @@ function App() {
       onSetAccent={(v) => setTweak('accent', v)} onSetLayout={(v) => setTweak('layout', v)}
       onManageUsers={() => setUsersOpen(true)} onLogout={logout} toast={toast} />;
   } else {
-    content = <window.Clients user={user} role={role} layout={t.layout} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onGotoDashboard={() => setScreen('dashboard')} toast={toast} />;
+    content = <window.Clients user={user} role={role} layout={t.layout} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onImport={() => setImportOpen(true)} onGotoDashboard={() => setScreen('dashboard')} toast={toast} />;
   }
 
   return (
@@ -505,6 +506,7 @@ function App() {
       {user ? <Sidebar user={user} role={role} screen={screen} onNav={navTo} /> : null}
       {content}
       {user && usersOpen ? <UsersModal me={user} onClose={() => setUsersOpen(false)} toast={toast} /> : null}
+      {user && importOpen ? <window.ImportClients user={user} role={role} users={usersList} existing={clients} live={live} onClose={() => setImportOpen(false)} onDone={loadClients} toast={toast} /> : null}
       {toastMsg ? <div className="toast"><span className="d"></span>{toastMsg}</div> : null}
 
       <window.TweaksPanel title="Tweaks">
