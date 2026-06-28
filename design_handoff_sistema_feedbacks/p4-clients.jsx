@@ -149,12 +149,6 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {(role === 'admin' || role === 'cs') && onGotoDashboard
-                ? <button className="btn-line" onClick={onGotoDashboard} title="Painel de acompanhamento">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="10" width="3" height="7" /><rect x="13" y="6" width="3" height="11" /></svg>
-                    Painel
-                  </button>
-                : null}
               {canManage && onImport ? <button className="btn-line" onClick={onImport}><I.upload size={16} /> Importar planilha</button> : null}
               {canManage ? <button className="btn-accent" onClick={onNewClient}><I.plus size={16} /> Adicionar cliente</button> : null}
             </div>

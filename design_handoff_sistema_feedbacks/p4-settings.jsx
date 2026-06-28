@@ -1,15 +1,9 @@
-// p4-settings.jsx — página de Configurações: conta, aparência, equipe, integrações, sobre.
+// p4-settings.jsx — página de Configurações: conta, equipe, integrações, sobre.
 
-function Settings({ user, role, accent, layout, onSetAccent, onSetLayout, onManageUsers, onLogout, toast }) {
+function Settings({ user, role, onManageUsers, onLogout, toast }) {
   const I = window.Icons;
   const isAdmin = role === 'admin';
   const live = !!(window.P4_API && window.P4_API.isLogged());
-  const accents = [
-    { v: '#56D54F', n: 'Verde' },
-    { v: '#2A6FDB', n: 'Azul' },
-    { v: '#E0922F', n: 'Âmbar' },
-    { v: '#7A5AE0', n: 'Roxo' },
-  ];
 
   return (
     <div className="shell">
@@ -39,33 +33,6 @@ function Settings({ user, role, accent, layout, onSetAccent, onSetLayout, onMana
               <button className="btn-line" style={{ marginTop: 14 }} onClick={() => alert('Para alterar sua senha, fale com o administrador do sistema.')}>
                 <I.lock size={15} /> Alterar senha
               </button>
-            </section>
-
-            {/* Aparência */}
-            <section className="set-card">
-              <div className="set-h"><span className="set-ic"><I.cog size={16} /></span><b>Aparência</b></div>
-              <div className="set-row">
-                <div>
-                  <div className="set-row-t">Cor de destaque</div>
-                  <div className="set-row-s">Usada em botões e indicadores.</div>
-                </div>
-                <div className="set-accs">
-                  {accents.map((a) => (
-                    <button key={a.v} className={'set-acc' + (accent === a.v ? ' on' : '')} title={a.n}
-                            style={{ background: a.v }} onClick={() => onSetAccent(a.v)} aria-label={a.n} />
-                  ))}
-                </div>
-              </div>
-              <div className="set-row">
-                <div>
-                  <div className="set-row-t">Lista de clientes</div>
-                  <div className="set-row-s">Como exibir os clientes na tela inicial.</div>
-                </div>
-                <div className="seg" style={{ width: 190, flex: 'none' }}>
-                  <button className={layout === 'grade' ? 'on' : ''} onClick={() => onSetLayout('grade')}>Grade</button>
-                  <button className={layout === 'lista' ? 'on' : ''} onClick={() => onSetLayout('lista')}>Lista</button>
-                </div>
-              </div>
             </section>
 
             {/* Equipe (admin) */}
