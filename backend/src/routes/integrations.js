@@ -45,7 +45,7 @@ router.get(
     const account = await db('accounts').where({ id: claims.accountId }).first();
     if (!account) return frontRedirect(res, 'error', 'account');
     try {
-      const tok = await meli.exchangeCode(String(code));
+      const tok = await meli.exchangeCode(String(code), claims.cv);
       let nickname = null;
       try {
         const r = await fetch(`${config.meli.apiHost}/users/me`, {
@@ -96,8 +96,9 @@ router.get(
     if (account.marketplace !== 'Mercado Livre') {
       throw badRequest('Esta conta não é do Mercado Livre.');
     }
-    const state = meli.signState({ accountId: account.id, by: req.user.id });
-    res.json({ url: meli.buildAuthUrl(state) });
+    const { verifier, challenge } = meli.pkcePair();
+    const state = meli.signState({ accountId: account.id, by: req.user.id, cv: verifier });
+    res.json({ url: meli.buildAuthUrl(state, challenge) });
   })
 );
 

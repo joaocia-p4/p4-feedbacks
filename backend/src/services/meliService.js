@@ -1,6 +1,7 @@
 // meliService — integração com o Mercado Livre (OAuth 2.0 + chamadas à API).
 // Guarda os tokens por conta (account) e renova o access_token sozinho quando
 // está perto de expirar. As credenciais do app vêm das variáveis de ambiente.
+const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const jwt = require('jsonwebtoken');
 const db = require('../db/knex');
@@ -21,13 +22,24 @@ function verifyState(state) {
   return jwt.verify(state, config.jwt.secret);
 }
 
-function buildAuthUrl(state) {
+// PKCE (exigido pelo Mercado Livre): gera o verifier e o challenge (S256).
+function pkcePair() {
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
+
+function buildAuthUrl(state, codeChallenge) {
   const u = new URLSearchParams({
     response_type: 'code',
     client_id: M.appId,
     redirect_uri: M.redirectUri,
     state,
   });
+  if (codeChallenge) {
+    u.set('code_challenge', codeChallenge);
+    u.set('code_challenge_method', 'S256');
+  }
   return `${M.authHost}/authorization?${u.toString()}`;
 }
 
@@ -48,14 +60,16 @@ async function postToken(params) {
   return data;
 }
 
-function exchangeCode(code) {
-  return postToken({
+function exchangeCode(code, codeVerifier) {
+  const params = {
     grant_type: 'authorization_code',
     client_id: M.appId,
     client_secret: M.secret,
     code,
     redirect_uri: M.redirectUri,
-  });
+  };
+  if (codeVerifier) params.code_verifier = codeVerifier;
+  return postToken(params);
 }
 
 function refreshTokens(refreshToken) {
@@ -138,6 +152,7 @@ async function apiGet(accountId, path, retry = true) {
 
 module.exports = {
   isConfigured,
+  pkcePair,
   signState,
   verifyState,
   buildAuthUrl,
