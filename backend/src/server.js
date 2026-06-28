@@ -4,6 +4,14 @@ const app = require('./app');
 const config = require('./config');
 const db = require('./db/knex');
 const { bootstrapAdmin } = require('./lib/bootstrap');
+const { notifyError } = require('./lib/notify');
+
+// Promessas rejeitadas sem tratamento → loga e alerta (não derruba o processo).
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('[unhandledRejection]', reason);
+  notifyError('unhandledRejection', reason);
+});
 
 async function start() {
   try {

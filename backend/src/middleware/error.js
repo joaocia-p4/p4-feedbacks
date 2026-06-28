@@ -1,5 +1,6 @@
 // Central error handler + 404. Keeps responses as consistent JSON.
 const { AppError } = require('../lib/errors');
+const { notifyError } = require('../lib/notify');
 
 function notFoundHandler(req, res) {
   res.status(404).json({ error: 'Rota não encontrada', path: req.originalUrl });
@@ -25,6 +26,7 @@ function errorHandler(err, req, res, _next) {
   }
   // eslint-disable-next-line no-console
   console.error('[error]', err);
+  notifyError(`${req.method} ${req.originalUrl}`, err); // alerta (se configurado)
   res.status(500).json({ error: 'Erro interno do servidor.' });
 }
 
