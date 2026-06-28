@@ -67,6 +67,69 @@ function Kpi({ label, value, foot, footColor }) {
   );
 }
 
+// Tabela de métricas (ROAS, faturamento, investimento, ACOS, TACOS) por analista, mensal.
+function AnalystMetrics({ am }) {
+  const [month, setMonth] = React.useState(am.months[0]);
+  const cur = am.byMonth[month] || { rows: [], total: null };
+  const money = (v) => window.fmtMoneyShort(v || 0);
+  const roasF = (v) => (v == null ? '—' : Number(v).toFixed(2).replace('.', ',') + 'x');
+  const pctF = (v) => (v == null ? '—' : Number(v).toFixed(1).replace('.', ',') + '%');
+  const cols = '1.5fr .7fr 1.1fr 1.1fr .75fr .8fr .8fr';
+  const num = (extra) => ({ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, fontSize: 13, textAlign: 'right', ...extra });
+  const headCell = { textAlign: 'right' };
+  const selStyle = { fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 600, padding: '7px 11px', border: '1px solid var(--line)', borderRadius: 9, background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer' };
+  return (
+    <div className="dash-no-break" style={{ background: 'var(--paper, #fff)', border: '1px solid var(--line, #e9ece9)', borderRadius: 14, padding: '16px 18px', marginBottom: 22 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <b style={{ fontSize: 14 }}>Métricas por analista</b>
+          <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>ROAS · faturamento · investimento · ACOS · TACOS</span>
+        </div>
+        <select value={month} onChange={(e) => setMonth(e.target.value)} style={selStyle}>
+          {am.months.map((m) => <option key={m} value={m}>{monthLbl(m)}</option>)}
+        </select>
+      </div>
+      {cur.rows.length === 0 ? (
+        <div style={{ color: 'var(--muted)', fontSize: 12 }}>Sem relatórios neste mês.</div>
+      ) : (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--line)', background: 'rgba(0,0,0,.02)', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
+            <span>Analista</span>
+            <span style={headCell}>Clientes</span>
+            <span style={headCell}>Faturamento</span>
+            <span style={headCell}>Investimento</span>
+            <span style={headCell}>ROAS</span>
+            <span style={headCell}>ACOS</span>
+            <span style={headCell}>TACOS</span>
+          </div>
+          {cur.rows.map((r, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--line)', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{r.analista}</span>
+              <span style={num({ color: 'var(--muted)' })}>{r.nClientes}</span>
+              <span style={num()}>{money(r.faturamento)}</span>
+              <span style={num()}>{money(r.investimento)}</span>
+              <span style={num()}>{roasF(r.roas)}</span>
+              <span style={num()}>{pctF(r.acos)}</span>
+              <span style={num()}>{pctF(r.tacos)}</span>
+            </div>
+          ))}
+          {cur.total ? (
+            <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 16px', alignItems: 'center', background: 'rgba(0,0,0,.03)' }}>
+              <span style={{ fontWeight: 800, fontSize: 13 }}>Total</span>
+              <span style={num({ fontWeight: 800 })}>{cur.total.nClientes}</span>
+              <span style={num({ fontWeight: 800 })}>{money(cur.total.faturamento)}</span>
+              <span style={num({ fontWeight: 800 })}>{money(cur.total.investimento)}</span>
+              <span style={num({ fontWeight: 800 })}>{roasF(cur.total.roas)}</span>
+              <span style={num({ fontWeight: 800 })}>{pctF(cur.total.acos)}</span>
+              <span style={num({ fontWeight: 800 })}>{pctF(cur.total.tacos)}</span>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGotoClients, toast }) {
   const I = window.Icons;
   const [data, setData] = React.useState(null);
@@ -141,6 +204,11 @@ function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGoto
                 <Kpi label="Faturamento" value={window.fmtMoneyShort(t.totalRevenue || 0)} foot="soma do último de cada conta" />
                 <Kpi label="No prazo" value={t.onTimeRate + '%'} foot="entrega em dia" footColor={t.onTimeRate >= 80 ? 'var(--green-ink)' : 'var(--red)'} />
               </div>
+
+              {/* Métricas por analista (mensal) */}
+              {data.analystMonthly && data.analystMonthly.months.length
+                ? <AnalystMetrics am={data.analystMonthly} />
+                : null}
 
               {/* Gráficos */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 22 }}>

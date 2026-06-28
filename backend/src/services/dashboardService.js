@@ -95,6 +95,67 @@ async function getDashboard(user) {
     })
     .sort((a, b) => (b.daysLate || 0) - (a.daysLate || 0));
 
+  // ── métricas financeiras por analista, por mês ────────────────────────────
+  // Soma faturamento/investimento/receita de Ads dos relatórios das contas
+  // ATIVAS (marketplaces encerrados saem, como no resto do painel) e deriva
+  // ROAS/ACOS/TACOS ponderados (soma os valores e só então faz a razão).
+  const mq = db('reports as r')
+    .join('accounts as a', 'a.id', 'r.account_id')
+    .join('clients as c', 'c.id', 'a.client_id')
+    .leftJoin('users as u', 'u.id', 'c.analista_id')
+    .where('a.ativo', true);
+  if (user.papel === 'analista') mq.where('c.analista_id', user.id);
+  const metricRows = await mq.select(
+    'r.periodo_fim', 'r.periodo_ini', 'r.criado_em',
+    'r.faturamento', 'r.investimento', 'r.receita_ads',
+    'c.id as client_id', 'u.nome as analista'
+  );
+
+  const ratios = (fat, inv, rec) => ({
+    roas: inv > 0 ? +(rec / inv).toFixed(2) : null,
+    acos: rec > 0 ? +((inv / rec) * 100).toFixed(1) : null,
+    tacos: fat > 0 ? +((inv / fat) * 100).toFixed(1) : null,
+  });
+  const monthsMap = {};
+  for (const r of metricRows) {
+    const m = String(r.periodo_fim || r.periodo_ini || r.criado_em || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(m)) continue; // ignora relatórios sem data de período válida
+    const nome = r.analista || '—';
+    if (!monthsMap[m]) monthsMap[m] = new Map();
+    const map = monthsMap[m];
+    if (!map.has(nome)) map.set(nome, { analista: nome, faturamento: 0, investimento: 0, receitaAds: 0, nReports: 0, clientes: new Set() });
+    const e = map.get(nome);
+    e.faturamento += Number(r.faturamento) || 0;
+    e.investimento += Number(r.investimento) || 0;
+    e.receitaAds += Number(r.receita_ads) || 0;
+    e.nReports += 1;
+    e.clientes.add(r.client_id);
+  }
+  const analystMonths = Object.keys(monthsMap).sort().reverse(); // mais recente primeiro
+  const analystByMonth = {};
+  for (const m of analystMonths) {
+    const rows = [...monthsMap[m].values()]
+      .map((e) => ({
+        analista: e.analista,
+        faturamento: e.faturamento,
+        investimento: e.investimento,
+        receitaAds: e.receitaAds,
+        nClientes: e.clientes.size,
+        nReports: e.nReports,
+        ...ratios(e.faturamento, e.investimento, e.receitaAds),
+      }))
+      .sort((a, b) => b.faturamento - a.faturamento);
+    const s = rows.reduce(
+      (acc, r) => {
+        acc.faturamento += r.faturamento; acc.investimento += r.investimento; acc.receitaAds += r.receitaAds;
+        acc.nClientes += r.nClientes; acc.nReports += r.nReports; return acc;
+      },
+      { faturamento: 0, investimento: 0, receitaAds: 0, nClientes: 0, nReports: 0 }
+    );
+    analystByMonth[m] = { rows, total: { analista: 'Total', ...s, ...ratios(s.faturamento, s.investimento, s.receitaAds) } };
+  }
+  const analystMonthly = { months: analystMonths, byMonth: analystByMonth };
+
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const totalClients = clients.length;
   const overdueClients = overdue.length;
@@ -124,6 +185,7 @@ async function getDashboard(user) {
     },
     reportsByWeek,
     clientsByManager,
+    analystMonthly,
     entriesByMonth,
     clientsByMarketplace,
     statusSplit: { emDia: totalClients - overdueClients, atrasado: overdueClients },
