@@ -44,24 +44,33 @@ router.get(
     }
     const account = await db('accounts').where({ id: claims.accountId }).first();
     if (!account) return frontRedirect(res, 'error', 'account');
+    let tok;
     try {
-      const tok = await meli.exchangeCode(String(code), claims.cv);
-      let nickname = null;
-      try {
-        const r = await fetch(`${config.meli.apiHost}/users/me`, {
-          headers: { Authorization: `Bearer ${tok.access_token}` },
-        });
-        const me = await r.json().catch(() => ({}));
-        nickname = me.nickname || null;
-      } catch (_e) {}
-      await meli.saveConnection(account.id, tok, { nickname });
-      return frontRedirect(res, 'connected');
+      tok = await meli.exchangeCode(String(code), claims.cv);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[meli] callback: falha na troca do code por token:', e.message, JSON.stringify(e.details || {}));
+      console.error('[meli] callback: troca de token falhou:', e.message, JSON.stringify(e.details || {}));
       const detail = String(e.message || 'token').replace('Mercado Livre recusou o token: ', '');
-      return frontRedirect(res, 'error', detail.slice(0, 100));
+      return frontRedirect(res, 'error', detail.slice(0, 120));
     }
+    let nickname = null;
+    try {
+      const r = await fetch(`${config.meli.apiHost}/users/me`, {
+        headers: { Authorization: `Bearer ${tok.access_token}` },
+      });
+      const me = await r.json().catch(() => ({}));
+      nickname = me.nickname || null;
+    } catch (_e) {}
+    try {
+      await meli.saveConnection(account.id, tok, { nickname });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[meli] callback: saveConnection falhou:', e.message);
+      const msg = String(e.message || '');
+      const reason = msg.includes(' - ') ? msg.split(' - ').pop() : msg.slice(-150);
+      return frontRedirect(res, 'error', 'db: ' + reason);
+    }
+    return frontRedirect(res, 'connected');
   })
 );
 
