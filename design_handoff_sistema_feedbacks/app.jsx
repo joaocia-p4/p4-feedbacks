@@ -845,8 +845,9 @@ function App() {
       const adsErr = r.ads && r.ads.erro;
       setMlMsg({
         err: false,
-        t: `Preenchido: ${r.pedidos} pedido(s), invest. R$ ${money(r.investimento)}` +
-          (adsErr ? ' · ⚠ Ads não retornou (confira o acesso de Publicidade)' : ` · ${r.ads.campanhas} campanha(s)`),
+        t: `Preenchido: ${r.pedidos} pedido(s) · fat. R$ ${money(r.faturamento)} · invest. R$ ${money(r.investimento)}` +
+          (adsErr ? ' · ⚠ Ads não retornou (confira o acesso de Publicidade)' : ` · ${r.ads.campanhas} campanha(s)`) +
+          (r.pedidosTruncados ? ' · ⚠ algum dia passou de 1000 pedidos (valor pode estar incompleto)' : ''),
       });
     } catch (e) {
       setMlMsg({ err: true, t: e.message || 'Falha ao buscar dados do Mercado Livre' });
