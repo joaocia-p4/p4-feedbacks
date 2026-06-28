@@ -47,10 +47,11 @@ function normalizeContas(body) {
       id: c.id, // id da conta existente (na edição); ausente = nova conta
       marketplace: c.marketplace,
       apelido: (c.apelido ?? c.conta ?? '').trim(),
-      metaInvestimento: c.metaInvestimento || p4.DEFAULT_METAS.metaInvestimento,
-      metaRoas: c.metaRoas || p4.DEFAULT_METAS.metaRoas,
-      metaAcos: c.metaAcos || p4.DEFAULT_METAS.metaAcos,
-      metaTacos: c.metaTacos || p4.DEFAULT_METAS.metaTacos,
+      // metas opcionais: mantém o que veio (inclusive "" = sem meta)
+      metaInvestimento: c.metaInvestimento ?? '',
+      metaRoas: c.metaRoas ?? '',
+      metaAcos: c.metaAcos ?? '',
+      metaTacos: c.metaTacos ?? '',
     }));
   }
   return (body.marketplaces || []).map((mk) => ({

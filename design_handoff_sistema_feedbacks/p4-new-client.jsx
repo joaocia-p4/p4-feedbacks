@@ -26,7 +26,7 @@ function MetaField({ label, prefix, suffix, value, onChange }) {
       <span className="mf-label">Meta {label}</span>
       <div className="lf-in">
         {prefix ? <span className="affix-l">{prefix}</span> : null}
-        <input className="mono" inputMode="decimal" value={value}
+        <input className="mono" inputMode="decimal" value={value} placeholder="opcional"
                onFocus={(e) => { try { e.target.select(); } catch (_) {} }}
                onChange={(e) => onChange(e.target.value)} />
         {suffix ? <span className="affix-r">{suffix}</span> : null}
@@ -138,7 +138,7 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   const [tipo, setTipo] = React.useState(client ? client.tipo : 'Loja');
   const [analista, setAnalista] = React.useState(client ? client.analista : (role === 'analista' ? user.nome : ''));
   const [contas, setContas] = React.useState(client
-    ? client.contas.map((m) => ({ id: m.id, marketplace: m.marketplace, conta: m.conta || '', metaInvestimento: metaStr(m.metaInvestimento) || '20,00', metaRoas: metaStr(m.metaRoas) || '4,00', metaAcos: metaStr(m.metaAcos) || '20,00', metaTacos: metaStr(m.metaTacos) || '15,00' }))
+    ? client.contas.map((m) => ({ id: m.id, marketplace: m.marketplace, conta: m.conta || '', metaInvestimento: metaStr(m.metaInvestimento), metaRoas: metaStr(m.metaRoas), metaAcos: metaStr(m.metaAcos), metaTacos: metaStr(m.metaTacos) }))
     : [blankConta()]);
   const [freq, setFreq] = React.useState(client && client.agenda ? client.agenda.freq : 'Semanal');
   const [diaSemana, setDiaSemana] = React.useState(client && client.agenda && client.agenda.diaSemana ? client.agenda.diaSemana : 'Segunda');

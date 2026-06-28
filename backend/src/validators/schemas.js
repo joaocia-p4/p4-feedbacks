@@ -57,10 +57,11 @@ const contaSchema = z.object({
   // the prototype field is "conta"; accept "apelido" too
   apelido: z.string().trim().optional(),
   conta: z.string().trim().optional(),
-  metaInvestimento: z.string().trim().min(1).default('20,00'),
-  metaRoas: z.string().trim().min(1).default('4,00'),
-  metaAcos: z.string().trim().min(1).default('20,00'),
-  metaTacos: z.string().trim().min(1).default('15,00'),
+  // metas são opcionais: podem ficar em branco ("" = sem meta definida)
+  metaInvestimento: z.string().trim().default(''),
+  metaRoas: z.string().trim().default(''),
+  metaAcos: z.string().trim().default(''),
+  metaTacos: z.string().trim().default(''),
 });
 
 // ── clients ──────────────────────────────────────────────────────────────────
