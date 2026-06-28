@@ -40,13 +40,15 @@ function MetaField({ label, prefix, suffix, value, onChange }) {
 function MeliConnect({ accId, marketplace }) {
   const [st, setSt] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
+  const [link, setLink] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
   const live = !!(window.P4_API && window.P4_API.isLogged());
 
   const refresh = React.useCallback(() => {
     if (!live || !accId) { setSt({ connected: false, configured: false }); return; }
     window.P4_API.meliStatus(accId).then(setSt).catch(() => setSt({ connected: false, configured: false }));
   }, [accId, live]);
-  React.useEffect(() => { refresh(); }, [refresh]);
+  React.useEffect(() => { setLink(null); setCopied(false); refresh(); }, [refresh]);
 
   const connect = async () => {
     setBusy(true);
@@ -56,40 +58,70 @@ function MeliConnect({ accId, marketplace }) {
   const disconnect = async () => {
     if (!window.confirm('Desconectar esta conta do Mercado Livre?')) return;
     setBusy(true);
-    try { await window.P4_API.meliDisconnect(accId); refresh(); }
+    try { await window.P4_API.meliDisconnect(accId); setLink(null); refresh(); }
     catch (e) { alert(e.message || 'Falha'); } finally { setBusy(false); }
+  };
+  const genLink = async () => {
+    setBusy(true); setCopied(false);
+    try { const r = await window.P4_API.meliConnectLink(accId); setLink(r.url); }
+    catch (e) { alert(e.message || 'Falha ao gerar link'); } finally { setBusy(false); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch (e) { /* o usuário pode selecionar e copiar manualmente */ }
   };
 
   if (marketplace !== 'Mercado Livre') return null;
 
-  const wrap = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--line)' };
+  const box = { marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--line)' };
+  const row = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' };
   const badge = { width: 20, height: 20, borderRadius: 5, background: '#FFE600', color: '#2D3277', fontWeight: 800, fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' };
   const head = { display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600 };
   const sm = { padding: '6px 12px', fontSize: 12.5 };
 
   if (!accId) {
     return (
-      <div style={wrap}>
-        <span style={head}><span style={badge}>ML</span> Integração Mercado Livre</span>
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>Salve o cliente para conectar esta conta.</span>
+      <div style={box}>
+        <div style={row}>
+          <span style={head}><span style={badge}>ML</span> Integração Mercado Livre</span>
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>Salve o cliente para conectar esta conta.</span>
+        </div>
       </div>
     );
   }
   if (!live || st == null) return null;
 
   return (
-    <div style={wrap}>
-      <span style={head}><span style={badge}>ML</span> Integração Mercado Livre</span>
-      {st.connected ? (
-        <>
-          <span style={{ color: 'var(--green-ink,#2f9a2b)', fontWeight: 700, fontSize: 12 }}>● Conectado{st.nickname ? ' · ' + st.nickname : ''}</span>
-          <button type="button" className="btn-line" style={sm} disabled={busy} onClick={disconnect}>Desconectar</button>
-        </>
-      ) : st.configured ? (
-        <button type="button" className="btn-accent" style={sm} disabled={busy} onClick={connect}>{busy ? 'Abrindo…' : 'Conectar Mercado Livre'}</button>
-      ) : (
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>Integração não configurada no servidor.</span>
-      )}
+    <div style={box}>
+      <div style={row}>
+        <span style={head}><span style={badge}>ML</span> Integração Mercado Livre</span>
+        {st.connected ? (
+          <>
+            <span style={{ color: 'var(--green-ink,#2f9a2b)', fontWeight: 700, fontSize: 12 }}>● Conectado{st.nickname ? ' · ' + st.nickname : ''}</span>
+            <button type="button" className="btn-line" style={sm} disabled={busy} onClick={disconnect}>Desconectar</button>
+          </>
+        ) : st.configured ? (
+          <>
+            <button type="button" className="btn-accent" style={sm} disabled={busy} onClick={genLink}>{busy ? 'Gerando…' : 'Gerar link p/ o cliente'}</button>
+            <button type="button" className="btn-line" style={sm} disabled={busy} onClick={connect}>Conectar eu mesmo</button>
+          </>
+        ) : (
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>Integração não configurada no servidor.</span>
+        )}
+      </div>
+
+      {link ? (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ ...row, gap: 8 }}>
+            <input readOnly value={link} onFocus={(e) => { try { e.target.select(); } catch (_) {} }}
+                   style={{ flex: 1, minWidth: 240, border: '1px solid var(--line,#e9ece9)', borderRadius: 9, padding: '8px 11px', fontSize: 12, fontFamily: "'JetBrains Mono',monospace", background: '#fff', color: 'inherit' }} />
+            <button type="button" className="btn-accent" style={sm} onClick={copy}>{copied ? 'Copiado! ✓' : 'Copiar'}</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+            Envie este link ao cliente (dono da conta). Ele faz login no Mercado Livre dele e autoriza — não precisa ter acesso ao sistema. Válido por 7 dias.
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

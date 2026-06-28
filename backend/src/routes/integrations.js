@@ -23,6 +23,26 @@ function frontRedirect(res, status, reason) {
   );
 }
 
+// Página simples (standalone) para quem abriu via LINK compartilhado (o cliente,
+// que não é usuário do sistema). Quando não é via link, volta para o app.
+function page(res, ok, title, msg) {
+  return res.send(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:460px;margin:60px auto;padding:0 20px;text-align:center;color:#1C242E">` +
+    `<div style="font-size:40px">${ok ? '✅' : '⚠️'}</div>` +
+    `<h2 style="color:${ok ? '#2f9a2b' : '#d8423a'};margin:10px 0">${title}</h2>` +
+    `<p style="color:#5b6670;line-height:1.5">${msg}</p></div>`
+  );
+}
+function finish(res, ok, viaLink, reason) {
+  if (viaLink) {
+    return ok
+      ? page(res, true, 'Conexão concluída!', 'Sua conta do Mercado Livre foi conectada com sucesso. Você já pode fechar esta aba.')
+      : page(res, false, 'Não foi possível conectar', (reason || 'Tente novamente') + '. Se persistir, peça um novo link à agência.');
+  }
+  return ok ? frontRedirect(res, 'connected') : frontRedirect(res, 'error', reason);
+}
+
 // ── CALLBACK (público — o Mercado Livre redireciona pra cá) ──────────────────
 // Valida o "state" assinado (que diz qual conta), troca o code por tokens e
 // guarda a conexão. Em qualquer falha, volta pro front com ?meli=error.
@@ -42,8 +62,9 @@ router.get(
     } catch (_e) {
       return frontRedirect(res, 'error', 'state');
     }
+    const viaLink = !!claims.viaLink;
     const account = await db('accounts').where({ id: claims.accountId }).first();
-    if (!account) return frontRedirect(res, 'error', 'account');
+    if (!account) return finish(res, false, viaLink, 'conta não encontrada');
     let tok;
     try {
       tok = await meli.exchangeCode(String(code), claims.cv);
@@ -51,7 +72,7 @@ router.get(
       // eslint-disable-next-line no-console
       console.error('[meli] callback: troca de token falhou:', e.message, JSON.stringify(e.details || {}));
       const detail = String(e.message || 'token').replace('Mercado Livre recusou o token: ', '');
-      return frontRedirect(res, 'error', detail.slice(0, 120));
+      return finish(res, false, viaLink, detail.slice(0, 120));
     }
     let nickname = null;
     try {
@@ -68,9 +89,31 @@ router.get(
       console.error('[meli] callback: saveConnection falhou:', e.message);
       const msg = String(e.message || '');
       const reason = msg.includes(' - ') ? msg.split(' - ').pop() : msg.slice(-150);
-      return frontRedirect(res, 'error', 'db: ' + reason);
+      return finish(res, false, viaLink, 'db: ' + reason);
     }
-    return frontRedirect(res, 'connected');
+    return finish(res, true, viaLink);
+  })
+);
+
+// Autorização via LINK compartilhado (PÚBLICO — o cliente/dono da conta abre).
+// Valida o link assinado, gera o PKCE e redireciona para o login do Mercado Livre.
+router.get(
+  '/mercadolivre/authorize',
+  asyncHandler(async (req, res) => {
+    if (!meli.isConfigured()) return page(res, false, 'Integração indisponível', 'A integração não está configurada. Avise a agência.');
+    let claims;
+    try {
+      claims = meli.verifyLink(String(req.query.t || ''));
+    } catch (_e) {
+      return page(res, false, 'Link inválido ou expirado', 'Peça um novo link de conexão à agência.');
+    }
+    const account = await db('accounts').where({ id: claims.accountId }).first();
+    if (!account || account.marketplace !== 'Mercado Livre') {
+      return page(res, false, 'Conta não encontrada', 'Peça um novo link à agência.');
+    }
+    const { verifier, challenge } = meli.pkcePair();
+    const state = meli.signState({ accountId: account.id, cv: verifier, viaLink: true });
+    return res.redirect(meli.buildAuthUrl(state, challenge));
   })
 );
 
@@ -108,6 +151,24 @@ router.get(
     const { verifier, challenge } = meli.pkcePair();
     const state = meli.signState({ accountId: account.id, by: req.user.id, cv: verifier });
     res.json({ url: meli.buildAuthUrl(state, challenge) });
+  })
+);
+
+// Gera um LINK compartilhável para enviar ao cliente (dono da conta master)
+// autorizar a conexão — sem precisar ser usuário do sistema.
+router.get(
+  '/mercadolivre/connect-link',
+  requireManager,
+  asyncHandler(async (req, res) => {
+    if (!meli.isConfigured()) {
+      throw badRequest('Integração do Mercado Livre não configurada no servidor.');
+    }
+    const account = await clientService.getAccountForWrite(accId(req), req.user);
+    if (account.marketplace !== 'Mercado Livre') {
+      throw badRequest('Esta conta não é do Mercado Livre.');
+    }
+    const token = meli.signLink(account.id);
+    res.json({ url: meli.authorizeLink(token), expiresInDays: 7 });
   })
 );
 

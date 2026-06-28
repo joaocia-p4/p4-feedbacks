@@ -22,6 +22,22 @@ function verifyState(state) {
   return jwt.verify(state, config.jwt.secret);
 }
 
+// Link compartilhável (enviado ao cliente/dono da conta para autorizar). Vale
+// 7 dias e carrega só o id da conta, assinado — não exige login no sistema.
+function signLink(accountId) {
+  return jwt.sign({ accountId, t: 'meli-link' }, config.jwt.secret, { expiresIn: '7d' });
+}
+function verifyLink(token) {
+  const p = jwt.verify(token, config.jwt.secret);
+  if (p.t !== 'meli-link') throw new Error('tipo de token inválido');
+  return p;
+}
+function authorizeLink(token) {
+  let origin = '';
+  try { origin = new URL(M.redirectUri).origin; } catch (_e) {}
+  return `${origin}/integrations/mercadolivre/authorize?t=${encodeURIComponent(token)}`;
+}
+
 // PKCE (exigido pelo Mercado Livre): gera o verifier e o challenge (S256).
 function pkcePair() {
   const verifier = crypto.randomBytes(32).toString('base64url');
@@ -247,6 +263,9 @@ module.exports = {
   reportData,
   signState,
   verifyState,
+  signLink,
+  verifyLink,
+  authorizeLink,
   buildAuthUrl,
   exchangeCode,
   refreshTokens,
