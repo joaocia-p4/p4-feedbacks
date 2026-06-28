@@ -340,8 +340,12 @@ function App() {
       const p = new URLSearchParams(window.location.search);
       const m = p.get('meli');
       if (!m) return;
-      toast(m === 'connected' ? 'Mercado Livre conectado ✅' : 'Não foi possível conectar ao Mercado Livre');
+      const reason = p.get('reason');
+      toast(m === 'connected'
+        ? 'Mercado Livre conectado ✅'
+        : 'Não foi possível conectar ao Mercado Livre' + (reason ? ` (${reason})` : ''));
       p.delete('meli');
+      p.delete('reason');
       const qs = p.toString();
       window.history.replaceState({}, '', window.location.pathname + (qs ? '?' + qs : ''));
     } catch (e) {}

@@ -11,12 +11,15 @@ const meli = require('../services/meliService');
 const router = express.Router();
 const FRONT = config.frontendUrl;
 
-function frontRedirect(res, status) {
-  if (FRONT) return res.redirect(`${FRONT}/?meli=${status}`);
+function frontRedirect(res, status, reason) {
+  if (FRONT) {
+    const q = reason ? `?meli=${status}&reason=${encodeURIComponent(reason)}` : `?meli=${status}`;
+    return res.redirect(`${FRONT}/${q}`);
+  }
   return res.send(
     status === 'connected'
       ? '<h2>Mercado Livre conectado! ✅</h2><p>Pode fechar esta aba e voltar ao sistema.</p>'
-      : '<h2>Não foi possível conectar.</h2><p>Feche esta aba e tente novamente.</p>'
+      : `<h2>Não foi possível conectar.</h2><p>Motivo: ${reason || 'desconhecido'}.</p>`
   );
 }
 
@@ -26,16 +29,21 @@ function frontRedirect(res, status) {
 router.get(
   '/mercadolivre/callback',
   asyncHandler(async (req, res) => {
-    const { code, state, error } = req.query;
-    if (error || !code || !state) return frontRedirect(res, 'error');
+    const { code, state, error, error_description } = req.query;
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[meli] callback: ML retornou erro:', error, error_description || '');
+      return frontRedirect(res, 'error', String(error));
+    }
+    if (!code || !state) return frontRedirect(res, 'error', 'params');
     let claims;
     try {
       claims = meli.verifyState(String(state));
     } catch (_e) {
-      return frontRedirect(res, 'error');
+      return frontRedirect(res, 'error', 'state');
     }
     const account = await db('accounts').where({ id: claims.accountId }).first();
-    if (!account) return frontRedirect(res, 'error');
+    if (!account) return frontRedirect(res, 'error', 'account');
     try {
       const tok = await meli.exchangeCode(String(code));
       let nickname = null;
@@ -48,8 +56,10 @@ router.get(
       } catch (_e) {}
       await meli.saveConnection(account.id, tok, { nickname });
       return frontRedirect(res, 'connected');
-    } catch (_e) {
-      return frontRedirect(res, 'error');
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[meli] callback: falha na troca do code por token:', e.message);
+      return frontRedirect(res, 'error', 'token');
     }
   })
 );
