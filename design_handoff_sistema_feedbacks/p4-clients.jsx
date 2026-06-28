@@ -10,7 +10,14 @@ function MkBadge({ name }) {
   );
 }
 
-function StatusTag({ status }) {
+function StatusTag({ status, encerrado }) {
+  if (encerrado) {
+    return (
+      <span className="status-tag closed">
+        <span className="d"></span>Encerrado
+      </span>
+    );
+  }
   const ok = status === 'em-dia';
   return (
     <span className={'status-tag ' + (ok ? 'ok' : 'late')}>
@@ -23,9 +30,9 @@ function MkRow({ contas }) {
   return (
     <div className="mk-row">
       {contas.map((m) => (
-        <span key={m.id} className="mk-chip" title={m.marketplace + (m.status === 'atrasado' ? ' · atrasado' : ' · em dia')}
+        <span key={m.id} className="mk-chip" title={m.marketplace + (m.ativo === false ? ' · encerrado' : (m.status === 'atrasado' ? ' · atrasado' : ' · em dia'))}
               style={{ color: window.mkColor(m.marketplace), background: window.mkBg(m.marketplace) }}>
-          <span className="d" style={{ background: m.status === 'atrasado' ? 'var(--red)' : window.mkBrand(m.marketplace) }}></span>
+          <span className="d" style={{ background: m.ativo === false ? 'var(--muted)' : (m.status === 'atrasado' ? 'var(--red)' : window.mkBrand(m.marketplace)) }}></span>
           {m.marketplace}
         </span>
       ))}
@@ -35,14 +42,14 @@ function MkRow({ contas }) {
 
 function ClientCard({ c, onOpen, onEdit }) {
   return (
-    <div className="ccard" onClick={() => onOpen(c.id)}>
+    <div className={'ccard' + (c.encerrado ? ' is-closed' : '')} onClick={() => onOpen(c.id)}>
       <div className="cc-head">
         <div className="nm">
           <div className="loja">{c.loja}</div>
           <div className="an">{c.tipo} · {c.analista}</div>
           <div className="cc-sched"><window.Icons.cal size={13} /> Envio · {window.agendaShort(c.agenda).toLowerCase()}</div>
         </div>
-        <StatusTag status={c.status} />
+        <StatusTag status={c.status} encerrado={c.encerrado} />
       </div>
       <MkRow contas={c.contas} />
       <div className="cc-foot">
@@ -60,7 +67,7 @@ function ClientCard({ c, onOpen, onEdit }) {
 
 function ClientRow({ c, onOpen }) {
   return (
-    <div className="clist-row" onClick={() => onOpen(c.id)}>
+    <div className={'clist-row' + (c.encerrado ? ' is-closed' : '')} onClick={() => onOpen(c.id)}>
       <div>
         <div className="loja">{c.loja}</div>
         <div className="an">{c.tipo} · {c.analista}</div>
@@ -69,7 +76,7 @@ function ClientRow({ c, onOpen }) {
       <div className="num">{String(c.roasW).replace('.', ',')}x</div>
       <div className="num">{window.fmtMoneyShort(c.fatLatest)}</div>
       <div className="num" style={{ fontWeight: 500, color: 'var(--muted)' }}>{window.brShort(c.last)}</div>
-      <div><StatusTag status={c.status} /></div>
+      <div><StatusTag status={c.status} encerrado={c.encerrado} /></div>
     </div>
   );
 }
@@ -88,30 +95,38 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const all = clients || window.P4_CLIENTS || [];
   // analista vê só os seus; admin e CS veem todos.
   const scoped = seesAll ? all : all.filter((c) => c.analista === user.nome);
+  // encerrados continuam visíveis (mutados), mas fora das métricas de atraso/envio.
+  const activeScoped = scoped.filter((c) => !c.encerrado);
+  const closedN = scoped.length - activeScoped.length;
 
   const markets = ['Todos', ...(window.P4_AD_MARKETPLACES || []).filter((m) => scoped.some((c) => c.marketplaces.includes(m)))];
 
-  const dueMatch = (c) => window.isDueOn(c.agenda, dueDate) || c.status === 'atrasado';
+  const dueMatch = (c) => !c.encerrado && (window.isDueOn(c.agenda, dueDate) || c.status === 'atrasado');
   let list = scoped.filter((c) => {
     if (dueOn && !dueMatch(c)) return false;
     if (mk !== 'Todos' && !c.marketplaces.includes(mk)) return false;
-    if (st === 'Em dia' && c.status !== 'em-dia') return false;
-    if (st === 'Atrasado' && c.status !== 'atrasado') return false;
+    if (st === 'Em dia' && (c.encerrado || c.status !== 'em-dia')) return false;
+    if (st === 'Atrasado' && (c.encerrado || c.status !== 'atrasado')) return false;
+    if (st === 'Encerrado' && !c.encerrado) return false;
     if (q.trim()) {
       const t = q.trim().toLowerCase();
       if (!(c.loja.toLowerCase().includes(t) || c.analista.toLowerCase().includes(t) || c.marketplaces.join(' ').toLowerCase().includes(t))) return false;
     }
     return true;
   });
-  if (dueOn) list = [...list].sort((a, b) => (b.status === 'atrasado') - (a.status === 'atrasado'));
+  // encerrados sempre por último; em "para enviar", atrasados primeiro
+  list = [...list].sort((a, b) => {
+    if (!!a.encerrado !== !!b.encerrado) return a.encerrado ? 1 : -1;
+    return dueOn ? (b.status === 'atrasado') - (a.status === 'atrasado') : 0;
+  });
 
   const dueCount = scoped.filter(dueMatch).length;
-  const schedCount = scoped.filter((c) => window.isDueOn(c.agenda, dueDate)).length;
+  const schedCount = scoped.filter((c) => !c.encerrado && window.isDueOn(c.agenda, dueDate)).length;
   const isToday = dueDate === window.P4_TODAY;
 
-  const lateN = scoped.filter((c) => c.status === 'atrasado').length;
-  const emDia = scoped.length - lateN;
-  const totalMk = scoped.reduce((a, c) => a + ((c.contas && c.contas.length) || (c.marketplaces && c.marketplaces.length) || 0), 0);
+  const lateN = activeScoped.filter((c) => c.status === 'atrasado').length;
+  const emDia = activeScoped.length - lateN;
+  const totalMk = activeScoped.reduce((a, c) => a + (c.contas ? c.contas.filter((m) => m.ativo !== false).length : ((c.marketplaces && c.marketplaces.length) || 0)), 0);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const firstName = (user && user.nome) ? user.nome.split(' ')[0] : '';
@@ -128,8 +143,9 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
               <div className="ch-sub">
                 {dueOn
                   ? <><b>{dueCount}</b> para enviar · {schedCount} no dia ({isToday ? 'hoje' : window.weekdayName(dueDate).toLowerCase()}, {window.brShort(dueDate)}) · <b style={{ color: lateN ? 'var(--red)' : 'inherit' }}>{lateN}</b> atrasado{lateN === 1 ? '' : 's'}</>
-                  : <><b>{scoped.length}</b> {scoped.length === 1 ? 'cliente' : 'clientes'}
-                      {lateN > 0 ? <> · <b style={{ color: 'var(--red)' }}>{lateN}</b> com relatório atrasado</> : <> · tudo em dia</>}</>}
+                  : <><b>{activeScoped.length}</b> {activeScoped.length === 1 ? 'cliente' : 'clientes'}
+                      {lateN > 0 ? <> · <b style={{ color: 'var(--red)' }}>{lateN}</b> com relatório atrasado</> : <> · tudo em dia</>}
+                      {closedN > 0 ? <> · {closedN} encerrado{closedN === 1 ? '' : 's'}</> : null}</>}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -147,13 +163,13 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
           <div className="kpis" style={{ marginBottom: 22 }}>
             <div className="kpi">
               <div className="k">Clientes</div>
-              <div className="v">{scoped.length}</div>
-              <div className="trend" style={{ color: 'var(--muted)' }}>{totalMk} {totalMk === 1 ? 'marketplace' : 'marketplaces'}</div>
+              <div className="v">{activeScoped.length}</div>
+              <div className="trend" style={{ color: 'var(--muted)' }}>{totalMk} {totalMk === 1 ? 'marketplace' : 'marketplaces'}{closedN ? ` · ${closedN} encerrado${closedN === 1 ? '' : 's'}` : ''}</div>
             </div>
             <div className="kpi">
               <div className="k">Em dia</div>
               <div className="v" style={{ color: 'var(--green-ink)' }}>{emDia}</div>
-              <div className="trend" style={{ color: 'var(--muted)' }}>{scoped.length ? Math.round((emDia / scoped.length) * 100) : 0}% da base</div>
+              <div className="trend" style={{ color: 'var(--muted)' }}>{activeScoped.length ? Math.round((emDia / activeScoped.length) * 100) : 0}% dos ativos</div>
             </div>
             <div className="kpi">
               <div className="k">Atrasados</div>
@@ -199,7 +215,7 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
               ))}
             </div>
             <div className="chips">
-              {['Todos', 'Em dia', 'Atrasado'].map((s) => (
+              {['Todos', 'Em dia', 'Atrasado', 'Encerrado'].map((s) => (
                 <button key={s} className={'chip' + (st === s ? ' on' : '')} onClick={() => setSt(s)}>{s}</button>
               ))}
             </div>

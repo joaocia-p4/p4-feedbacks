@@ -62,6 +62,10 @@ const contaSchema = z.object({
   metaRoas: z.string().trim().default(''),
   metaAcos: z.string().trim().default(''),
   metaTacos: z.string().trim().default(''),
+  // ciclo de vida por marketplace (opcionais) — aceita string, "", null ou ausente
+  dataEntrada: z.preprocess((v) => (v == null ? '' : String(v).trim()), z.string()),
+  dataEncerramento: z.preprocess((v) => (v == null ? '' : String(v).trim()), z.string()),
+  ativo: z.boolean().default(true),
 });
 
 // ── clients ──────────────────────────────────────────────────────────────────

@@ -75,6 +75,9 @@ function conta(clientId, mk, seed) {
     metaInvestimento: seed.metaInvestimento || '20,00',
     metaAcos: seed.metaAcos || '20,00',
     metaTacos: seed.metaTacos || '15,00',
+    dataEntrada: seed.dataEntrada || null,
+    dataEncerramento: seed.dataEncerramento || null,
+    ativo: seed.ativo !== false,
     last: seed.last,
     status: (new Date('2026-06-22') - new Date(seed.last + 'T00:00:00')) / 86400000 > 9 ? 'atrasado' : 'em-dia',
     reports: genReports(`${clientId}-${MK[mk].short}`, seed),
@@ -84,8 +87,8 @@ function conta(clientId, mk, seed) {
 // raw client definitions — contas defined inline
 const RAW = [
   { id: 'c1', loja: 'Casa & Conforto', tipo: 'Loja', analista: 'Ana Prado', contas: [
-    ['Mercado Livre', { fat: 184200, roas: 5.12, acos: 18.4, metaRoas: 4, last: '2026-06-22', n: 24 }],
-    ['Shopee',        { fat: 71400,  roas: 4.05, acos: 22.1, metaRoas: 4, last: '2026-06-22', n: 16 }],
+    ['Mercado Livre', { fat: 184200, roas: 5.12, acos: 18.4, metaRoas: 4, last: '2026-06-22', n: 24, dataEntrada: '2024-08-01' }],
+    ['Shopee',        { fat: 71400,  roas: 4.05, acos: 22.1, metaRoas: 4, last: '2026-06-22', n: 16, dataEntrada: '2025-01-10' }],
   ] },
   { id: 'c2', loja: 'TechNova Store', tipo: 'Loja', analista: 'Bruno Reis', contas: [
     ['Amazon',        { fat: 312800, roas: 6.30, acos: 14.1, metaRoas: 4.5, last: '2026-06-21', n: 31 }],
@@ -93,8 +96,8 @@ const RAW = [
     ['Tiktok',        { fat: 64200,  roas: 3.71, acos: 26.9, metaRoas: 4,   last: '2026-06-08', n: 6 }],
   ] },
   { id: 'c3', loja: 'Moda Viva', tipo: 'Marca', analista: 'Carla Nunes', contas: [
-    ['Shopee',        { fat: 96400,  roas: 3.42, acos: 26.7, metaRoas: 4, last: '2026-06-08', n: 12 }],
-    ['Tiktok',        { fat: 58300,  roas: 4.88, acos: 19.4, metaRoas: 4, last: '2026-06-22', n: 9 }],
+    ['Shopee',        { fat: 96400,  roas: 3.42, acos: 26.7, metaRoas: 4, last: '2026-06-08', n: 12, dataEntrada: '2024-05-20' }],
+    ['Tiktok',        { fat: 58300,  roas: 4.88, acos: 19.4, metaRoas: 4, last: '2026-06-22', n: 9, dataEntrada: '2025-02-01', dataEncerramento: '2026-04-20', ativo: false }],
   ] },
   { id: 'c4', loja: 'Pet Família', tipo: 'Loja', analista: 'Ana Prado', contas: [
     ['Mercado Livre', { fat: 142600, roas: 4.78, acos: 19.9, metaRoas: 4, last: '2026-06-22', n: 18 }],
@@ -111,7 +114,7 @@ const RAW = [
     ['Magalu',        { fat: 39800,  roas: 3.64, acos: 24.8, metaRoas: 4, last: '2026-06-05', n: 8 }],
   ] },
   { id: 'c8', loja: 'Kids & Cia', tipo: 'Loja', analista: 'Bruno Reis', contas: [
-    ['Tiktok',        { fat: 51200,  roas: 2.97, acos: 31.8, metaRoas: 4, last: '2026-06-01', n: 7 }],
+    ['Tiktok',        { fat: 51200,  roas: 2.97, acos: 31.8, metaRoas: 4, last: '2026-06-01', n: 7, dataEntrada: '2024-03-10', dataEncerramento: '2026-05-15', ativo: false }],
   ] },
   { id: 'c9', loja: 'Gourmet Express', tipo: 'Marca', analista: 'Carla Nunes', contas: [
     ['Magalu',        { fat: 173400, roas: 5.05, acos: 18.0, metaRoas: 4, last: '2026-06-22', n: 21 }],
@@ -204,14 +207,19 @@ const CLIENTS = RAW.map((c, ci) => {
   const roasW = contas.reduce((a, m) => a + (m.reports[0]?.roas || 0) * (m.reports[0]?.faturamento || 0), 0) / (fatLatest || 1);
   const n = contas.reduce((a, m) => a + m.reports.length, 0);
   const last = contas.reduce((a, m) => (m.last > a ? m.last : a), '0000-00-00');
-  const lastWorst = contas.reduce((a, m) => (m.last < a ? m.last : a), '9999-12-31');
+  // atraso considera só contas ATIVAS — marketplace encerrado não cobra relatório
+  const ativas = contas.filter((m) => m.ativo !== false);
+  const baseAtraso = ativas.length ? ativas : contas;
+  const lastWorst = baseAtraso.reduce((a, m) => (m.last < a ? m.last : a), '9999-12-31');
   const agenda = c.agenda || SAMPLE_AGENDAS[ci % SAMPLE_AGENDAS.length];
   const overdueSched = isOverdueBySchedule(agenda, lastWorst, P4_TODAY);
-  const status = (contas.some((m) => m.status === 'atrasado') || overdueSched) ? 'atrasado' : 'em-dia';
+  const status = (baseAtraso.some((m) => m.status === 'atrasado') || overdueSched) ? 'atrasado' : 'em-dia';
+  // cliente "encerrado" só quando todas as contas estão inativas (derivado)
+  const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
   return {
     ...c, contas, agenda, lastWorst, overdueSched,
     marketplaces: contas.map((m) => m.marketplace),
-    fatLatest, roasW: +roasW.toFixed(2), n, last, status,
+    fatLatest, roasW: +roasW.toFixed(2), n, last, status, encerrado,
   };
 });
 

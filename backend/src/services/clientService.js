@@ -52,12 +52,19 @@ function normalizeContas(body) {
       metaRoas: c.metaRoas ?? '',
       metaAcos: c.metaAcos ?? '',
       metaTacos: c.metaTacos ?? '',
+      // ciclo de vida: datas vazias viram null; ativo default true
+      dataEntrada: (c.dataEntrada ?? '').trim() || null,
+      dataEncerramento: (c.dataEncerramento ?? '').trim() || null,
+      ativo: c.ativo === false ? false : true,
     }));
   }
   return (body.marketplaces || []).map((mk) => ({
     marketplace: mk,
     apelido: '',
     ...p4.DEFAULT_METAS,
+    dataEntrada: null,
+    dataEncerramento: null,
+    ativo: true,
   }));
 }
 function sortAccounts(accs) {
@@ -90,6 +97,9 @@ function assembleClient(clientRow, accountRows, reportsByAccount, asOf) {
       metaRoas: a.meta_roas,
       metaAcos: a.meta_acos,
       metaTacos: a.meta_tacos,
+      dataEntrada: a.data_entrada ? String(a.data_entrada).slice(0, 10) : null,
+      dataEncerramento: a.data_encerramento ? String(a.data_encerramento).slice(0, 10) : null,
+      ativo: a.ativo === 0 || a.ativo === false ? false : true, // SQLite: 0/1
       reports: rows.map((r) => reportService.mapRow(r, metaRoasNum)),
     };
   });
@@ -141,6 +151,7 @@ function normalizeStatus(s) {
   const v = String(s || '').trim().toLowerCase();
   if (v === 'em dia' || v === 'em-dia') return 'em-dia';
   if (v === 'atrasado') return 'atrasado';
+  if (v === 'encerrado') return 'encerrado';
   return null; // 'Todos' / unknown → no status filter
 }
 function applyFilters(list, filters) {
@@ -150,10 +161,12 @@ function applyFilters(list, filters) {
   const status = normalizeStatus(filters.status);
 
   let out = list.filter((c) => {
-    if (due && !(p4.isDueOn(c.agenda, due) || c.status === 'atrasado')) return false;
+    // encerrados nunca entram em "para enviar"
+    if (due && !(!c.encerrado && (p4.isDueOn(c.agenda, due) || c.status === 'atrasado'))) return false;
     if (marketplace && marketplace !== 'Todos' && !c.marketplaces.includes(marketplace)) return false;
-    if (status === 'em-dia' && c.status !== 'em-dia') return false;
-    if (status === 'atrasado' && c.status !== 'atrasado') return false;
+    if (status === 'em-dia' && (c.encerrado || c.status !== 'em-dia')) return false;
+    if (status === 'atrasado' && (c.encerrado || c.status !== 'atrasado')) return false;
+    if (status === 'encerrado' && !c.encerrado) return false;
     if (q) {
       const hay =
         c.loja.toLowerCase() +
@@ -203,14 +216,14 @@ async function listClients(user, filters = {}) {
   const meta = {
     asOf,
     total: enriched.length,
-    late: enriched.filter((c) => c.status === 'atrasado').length,
+    late: enriched.filter((c) => !c.encerrado && c.status === 'atrasado').length,
   };
   if (filters.due) {
     meta.due = filters.due;
     meta.weekday = p4.weekdayName(filters.due);
-    meta.scheduled = enriched.filter((c) => p4.isDueOn(c.agenda, filters.due)).length;
+    meta.scheduled = enriched.filter((c) => !c.encerrado && p4.isDueOn(c.agenda, filters.due)).length;
     meta.toSend = enriched.filter(
-      (c) => p4.isDueOn(c.agenda, filters.due) || c.status === 'atrasado'
+      (c) => !c.encerrado && (p4.isDueOn(c.agenda, filters.due) || c.status === 'atrasado')
     ).length;
   }
 
@@ -269,6 +282,9 @@ async function createClient(body, actingUser) {
         meta_roas: c.metaRoas,
         meta_acos: c.metaAcos,
         meta_tacos: c.metaTacos,
+        data_entrada: c.dataEntrada,
+        data_encerramento: c.dataEncerramento,
+        ativo: c.ativo,
       }))
     );
   });
@@ -321,6 +337,9 @@ async function updateClient(id, body, actingUser) {
           meta_roas: c.metaRoas,
           meta_acos: c.metaAcos,
           meta_tacos: c.metaTacos,
+          data_entrada: c.dataEntrada,
+          data_encerramento: c.dataEncerramento,
+          ativo: c.ativo,
         };
         if (c.id && currentIds.has(c.id)) {
           keptIds.add(c.id);

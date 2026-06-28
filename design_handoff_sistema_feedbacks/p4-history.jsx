@@ -613,13 +613,15 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
               <div className="crumb"><span onClick={onBack} style={{ cursor: 'pointer' }}>Clientes</span> / Histórico</div>
               <h1>
                 {c.loja}
-                <window.StatusTag status={c.status} />
+                <window.StatusTag status={c.status} encerrado={c.encerrado} />
               </h1>
               <div className="meta">
                 <span style={{ color: window.mkColor(conta.marketplace), fontWeight: 700 }}>{contaLabel(conta, idx)}</span>
                 <span>Analista · <b>{c.analista}</b></span>
                 <span>{c.contas.length} {c.contas.length === 1 ? 'marketplace' : 'marketplaces'}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><I.cal size={14} /> Envio · <b>{window.agendaLabel(c.agenda).toLowerCase()}</b></span>
+                {conta.dataEntrada ? <span>Entrada · <b>{window.brShort(conta.dataEntrada)}</b></span> : null}
+                {conta.ativo === false ? <span style={{ color: 'var(--muted)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><span className="d" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--muted)' }}></span>Encerrado{conta.dataEncerramento ? <> · {window.brShort(conta.dataEncerramento)}</> : null}</span> : null}
               </div>
             </div>
             <div className="hh-actions">
@@ -648,9 +650,9 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
             ? (
               <div className="mk-tabs">
                 {c.contas.map((m, i) => (
-                  <button key={m.id} className={'mk-tab' + (i === idx ? ' on' : '')} onClick={() => setIdx(i)}
+                  <button key={m.id} className={'mk-tab' + (i === idx ? ' on' : '') + (m.ativo === false ? ' is-closed' : '')} onClick={() => setIdx(i)}
                           style={i === idx ? { borderColor: window.mkColor(m.marketplace), color: window.mkColor(m.marketplace) } : null}>
-                    <span className="d" style={{ background: m.status === 'atrasado' ? 'var(--red)' : window.mkBrand(m.marketplace) }}></span>
+                    <span className="d" style={{ background: m.ativo === false ? 'var(--muted)' : (m.status === 'atrasado' ? 'var(--red)' : window.mkBrand(m.marketplace)) }}></span>
                     {contaLabel(m, i)}
                     <span className="mk-tab-n">{m.reports.length}</span>
                   </button>

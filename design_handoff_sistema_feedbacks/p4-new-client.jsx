@@ -132,13 +132,13 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   const ALL = window.P4_AD_MARKETPLACES || [];
   const analistas = (users || window.P4_USERS || []).filter((u) => u.papel === 'analista');
   const metaStr = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : (v || ''));
-  const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '20,00', metaRoas: '4,00', metaAcos: '20,00', metaTacos: '15,00' });
+  const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '20,00', metaRoas: '4,00', metaAcos: '20,00', metaTacos: '15,00', dataEntrada: '', dataEncerramento: '', ativo: true });
 
   const [loja, setLoja] = React.useState(client ? client.loja : '');
   const [tipo, setTipo] = React.useState(client ? client.tipo : 'Loja');
   const [analista, setAnalista] = React.useState(client ? client.analista : (role === 'analista' ? user.nome : ''));
   const [contas, setContas] = React.useState(client
-    ? client.contas.map((m) => ({ id: m.id, marketplace: m.marketplace, conta: m.conta || '', metaInvestimento: metaStr(m.metaInvestimento), metaRoas: metaStr(m.metaRoas), metaAcos: metaStr(m.metaAcos), metaTacos: metaStr(m.metaTacos) }))
+    ? client.contas.map((m) => ({ id: m.id, marketplace: m.marketplace, conta: m.conta || '', metaInvestimento: metaStr(m.metaInvestimento), metaRoas: metaStr(m.metaRoas), metaAcos: metaStr(m.metaAcos), metaTacos: metaStr(m.metaTacos), dataEntrada: m.dataEntrada || '', dataEncerramento: m.dataEncerramento || '', ativo: m.ativo !== false }))
     : [blankConta()]);
   const [freq, setFreq] = React.useState(client && client.agenda ? client.agenda.freq : 'Semanal');
   const [diaSemana, setDiaSemana] = React.useState(client && client.agenda && client.agenda.diaSemana ? client.agenda.diaSemana : 'Segunda');
@@ -170,6 +170,9 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
         metaRoas: c.metaRoas,
         metaAcos: c.metaAcos,
         metaTacos: c.metaTacos,
+        dataEntrada: c.dataEntrada || null,
+        dataEncerramento: c.dataEncerramento || null,
+        ativo: c.ativo !== false,
       })),
       marketplaces: validMks.map((c) => c.marketplace), // compat com o modo protótipo
       agenda: freq === 'Mensal' ? { freq, diaMes: parseInt(diaMes, 10) || 1 } : { freq, diaSemana },
@@ -247,6 +250,17 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
                       <MetaField label="ROAS" suffix="x" value={c.metaRoas} onChange={(v) => setConta(i, { metaRoas: v })} />
                       <MetaField label="ACOS" suffix="%" value={c.metaAcos} onChange={(v) => setConta(i, { metaAcos: v })} />
                       <MetaField label="TACOS" suffix="%" value={c.metaTacos} onChange={(v) => setConta(i, { metaTacos: v })} />
+                    </div>
+                    <div className={'mk-lifecycle' + (c.ativo === false ? ' is-closed' : '')}>
+                      <LField label="Data de entrada" hint="opcional">
+                        <div className="lf-in"><input type="date" value={c.dataEntrada || ''} onChange={(e) => setConta(i, { dataEntrada: e.target.value })} /></div>
+                      </LField>
+                      <LField label="Data de encerramento" hint="opcional">
+                        <div className="lf-in"><input type="date" value={c.dataEncerramento || ''} onChange={(e) => setConta(i, { dataEncerramento: e.target.value })} /></div>
+                      </LField>
+                      <LField label="Status">
+                        <Seg value={c.ativo === false ? 'Encerrado' : 'Ativo'} options={['Ativo', 'Encerrado']} onChange={(v) => setConta(i, { ativo: v === 'Ativo' })} />
+                      </LField>
                     </div>
                     {c.marketplace === 'Mercado Livre' ? <MeliConnect accId={c.id} marketplace={c.marketplace} /> : null}
                   </div>

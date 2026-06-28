@@ -22,6 +22,9 @@ function enrichAccount(acc, asOf) {
     metaRoas: acc.metaRoas,
     metaAcos: acc.metaAcos,
     metaTacos: acc.metaTacos,
+    dataEntrada: acc.dataEntrada || null,
+    dataEncerramento: acc.dataEncerramento || null,
+    ativo: acc.ativo === false ? false : true,
     last,
     status: p4.accountStatus(last, asOf),
     reports,
@@ -43,13 +46,18 @@ function enrichClient(client, accounts, opts = {}) {
     ) / (fatLatest || 1);
   const n = contas.reduce((sum, m) => sum + m.reports.length, 0);
   const last = contas.reduce((a, m) => (m.last && m.last > a ? m.last : a), '0000-00-00');
-  const lastWorst = contas.reduce(
+  // o atraso considera só contas ATIVAS — marketplace encerrado não cobra relatório
+  const ativas = contas.filter((m) => m.ativo !== false);
+  const baseAtraso = ativas.length ? ativas : contas;
+  const lastWorst = baseAtraso.reduce(
     (a, m) => (m.last && m.last < a ? m.last : a),
     '9999-12-31'
   );
   const overdueSched = p4.isOverdueBySchedule(client.agenda, lastWorst, asOf);
   const status =
-    contas.some((m) => m.status === 'atrasado') || overdueSched ? 'atrasado' : 'em-dia';
+    baseAtraso.some((m) => m.status === 'atrasado') || overdueSched ? 'atrasado' : 'em-dia';
+  // cliente "encerrado" só quando TODAS as contas estão inativas (derivado, não persistido)
+  const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
 
   return {
     id: client.id,
@@ -69,6 +77,7 @@ function enrichClient(client, accounts, opts = {}) {
     lastWorst: lastWorst === '9999-12-31' ? null : lastWorst,
     overdueSched,
     status,
+    encerrado,
   };
 }
 

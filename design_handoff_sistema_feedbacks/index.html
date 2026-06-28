@@ -316,6 +316,9 @@ body{
   transition:.16s;display:flex;flex-direction:column;gap:14px;position:relative;
 }
 .ccard:hover{border-color:rgba(var(--accent-rgb),.6);box-shadow:0 16px 36px -22px rgba(28,36,46,.4);transform:translateY(-2px)}
+.ccard.is-closed{opacity:.6}
+.ccard.is-closed:hover{opacity:.9}
+.clist-row.is-closed{opacity:.6}
 .cc-head{display:flex;align-items:flex-start;gap:11px}
 .cc-head .nm{flex:1;min-width:0}
 .cc-head .loja{font-size:15.5px;font-weight:700;letter-spacing:-.01em;line-height:1.25;text-wrap:balance}
@@ -327,6 +330,8 @@ body{
 .status-tag.ok .d{background:var(--green)}
 .status-tag.late{background:rgba(216,66,58,.12);color:var(--red)}
 .status-tag.late .d{background:var(--red)}
+.status-tag.closed{background:rgba(107,117,112,.14);color:var(--muted)}
+.status-tag.closed .d{background:#9aa39d}
 
 .cc-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:13px;background:#f6f8f6;border-radius:11px}
 .cc-met .k{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
@@ -422,6 +427,7 @@ body{
 .mk-tab:hover{border-color:#c9cfca}
 .mk-tab .d{width:8px;height:8px;border-radius:50%}
 .mk-tab.on{background:#fff;font-weight:700}
+.mk-tab.is-closed{opacity:.55}
 .mk-tab-n{font-family:'JetBrains Mono',monospace;font-size:10px;background:#eef1ee;color:var(--muted);padding:2px 6px;border-radius:6px;font-weight:600}
 
 /* ---- new-client form ---- */
@@ -455,6 +461,9 @@ body{
 .mk-pick{flex:1 1 220px;min-width:0}
 .mk-acct-id{flex:1 1 200px;min-width:0}
 .mk-metas{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.mk-lifecycle{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.mk-lifecycle.is-closed{opacity:.85}
+.mk-lifecycle input[type=date]{font-family:'JetBrains Mono',monospace;font-size:12.5px}
 .meta-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .mf-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
 .meta-field .lf-in input{padding:9px 10px;text-align:right}

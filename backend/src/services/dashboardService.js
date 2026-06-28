@@ -16,7 +16,9 @@ function weekStartISO(isoStr) {
 async function getDashboard(user) {
   // Clientes enriquecidos (admin/cs => todos). Já trazem status, criadoEm,
   // contas (com status/último), marketplaces, n (nº de relatórios), roasW, etc.
-  const { clients } = await clientService.listClients(user, {});
+  const { clients: allClients } = await clientService.listClients(user, {});
+  // clientes encerrados (todas as contas inativas) não entram nas métricas de acompanhamento
+  const clients = allClients.filter((c) => !c.encerrado);
   const reports = await db('reports').select('salvo_em', 'criado_em');
 
   const today = new Date(p4.todayISO() + 'T00:00:00');
