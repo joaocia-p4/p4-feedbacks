@@ -151,9 +151,100 @@ async function apiGet(accountId, path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// Junta os dados de um período (YYYY-MM-DD) para preencher um relatório:
+// vendas/faturamento (API de Pedidos) + investimento/receita/vendas de Ads
+// (API de Publicidade, somando todas as campanhas).
+async function reportData(accountId, from, to) {
+  const me = await apiGet(accountId, '/users/me');
+  const sellerId = me.ok ? me.data.id : null;
+  const siteId = (me.ok && me.data.site_id) || 'MLB';
+
+  // ── Pedidos pagos no período (paginado) ──
+  let faturamento = 0;
+  let vendas = 0;
+  let pedidos = 0;
+  if (sellerId) {
+    const fromISO = `${from}T00:00:00.000-03:00`;
+    const toISO = `${to}T23:59:59.999-03:00`;
+    let offset = 0;
+    for (let i = 0; i < 20 && offset < 1000; i++) {
+      const q =
+        `/orders/search?seller=${sellerId}&order.status=paid` +
+        `&order.date_created.from=${encodeURIComponent(fromISO)}` +
+        `&order.date_created.to=${encodeURIComponent(toISO)}` +
+        `&sort=date_desc&limit=50&offset=${offset}`;
+      const r = await apiGet(accountId, q);
+      if (!r.ok) break;
+      const results = r.data.results || [];
+      for (const o of results) {
+        faturamento += o.total_amount || 0;
+        vendas += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
+      }
+      const total = r.data.paging ? r.data.paging.total : results.length;
+      pedidos = total;
+      offset += 50;
+      if (offset >= total || results.length === 0) break;
+    }
+  }
+
+  // ── Anúncios (Product Ads), somando as campanhas ──
+  let investimento = 0;
+  let receitaAds = 0;
+  let vendasAds = 0;
+  let clicks = 0;
+  let prints = 0;
+  let campanhas = 0;
+  let adsErro = null;
+  const adv = await apiGet(accountId, '/advertising/advertisers?product_id=PADS', {
+    headers: { 'Api-Version': '1' },
+  });
+  const list = (adv.ok && adv.data.advertisers) || [];
+  const advertiser = list.find((a) => a.site_id === siteId) || list[0];
+  if (advertiser) {
+    let offset = 0;
+    for (let i = 0; i < 20 && offset < 1000; i++) {
+      const q =
+        `/marketplace/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}` +
+        `/product_ads/campaigns/search?limit=50&offset=${offset}` +
+        `&date_from=${from}&date_to=${to}` +
+        `&metrics=cost,total_amount,units_quantity,clicks,prints`;
+      const r = await apiGet(accountId, q, { headers: { 'Api-Version': '1' } });
+      if (!r.ok) { adsErro = r.data; break; }
+      const results = r.data.results || [];
+      for (const c of results) {
+        const m = c.metrics || {};
+        investimento += m.cost || 0;
+        receitaAds += m.total_amount || 0;
+        vendasAds += m.units_quantity || 0;
+        clicks += m.clicks || 0;
+        prints += m.prints || 0;
+      }
+      const total = r.data.paging ? r.data.paging.total : results.length;
+      campanhas = total;
+      offset += 50;
+      if (offset >= total || results.length === 0) break;
+    }
+  } else {
+    adsErro = adv.ok ? 'nenhum advertiser de Product Ads' : adv.data;
+  }
+
+  return {
+    periodo: { from, to },
+    vendedor: { id: sellerId, site: siteId, nickname: me.ok ? me.data.nickname : null },
+    faturamento,
+    vendas,
+    pedidos,
+    investimento,
+    receitaAds,
+    vendasAds,
+    ads: { clicks, prints, campanhas, erro: adsErro },
+  };
+}
+
 module.exports = {
   isConfigured,
   pkcePair,
+  reportData,
   signState,
   verifyState,
   buildAuthUrl,

@@ -704,6 +704,8 @@ function App() {
   if (bootRef.current === null) bootRef.current = consumeReportContext();
   const [d, setD] = useState(() => bootRef.current.initialD);
   const [link, setLink] = useState(() => bootRef.current.link);
+  const [mlBusy, setMlBusy] = useState(false);
+  const [mlMsg, setMlMsg] = useState(null);
   const [savingApi, setSavingApi] = useState(false);
   const [apiMsg, setApiMsg] = useState(null);
   // keep comparison periods ordered by date automatically (most recent first)
@@ -822,6 +824,36 @@ function App() {
 
   // salvar este relatório no backend (na conta vinculada)
   const loggedIn = !!(window.P4_API && window.P4_API.isLogged());
+
+  // Puxar os números do período direto do Mercado Livre (Pedidos + Ads).
+  const canPullMeli = !!(link && loggedIn && link.marketplace === 'Mercado Livre');
+  const pullFromMeli = async () => {
+    if (!d.periodoIni || !d.periodoFim) { setMlMsg({ err: true, t: 'Defina o início e o fim do período primeiro.' }); return; }
+    setMlBusy(true); setMlMsg(null);
+    try {
+      const r = await window.P4_API.meliReportData(link.accId, d.periodoIni, d.periodoFim);
+      const money = (n) => Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const int = (n) => String(Math.round(Number(n) || 0));
+      setD((p) => ({
+        ...p,
+        faturamento: money(r.faturamento),
+        vendas: int(r.vendas),
+        receitaAds: money(r.receitaAds),
+        vendasAds: int(r.vendasAds),
+        investimento: money(r.investimento),
+      }));
+      const adsErr = r.ads && r.ads.erro;
+      setMlMsg({
+        err: false,
+        t: `Preenchido: ${r.pedidos} pedido(s), invest. R$ ${money(r.investimento)}` +
+          (adsErr ? ' · ⚠ Ads não retornou (confira o acesso de Publicidade)' : ` · ${r.ads.campanhas} campanha(s)`),
+      });
+    } catch (e) {
+      setMlMsg({ err: true, t: e.message || 'Falha ao buscar dados do Mercado Livre' });
+    } finally {
+      setMlBusy(false);
+    }
+  };
   const saveToSystem = async () => {
     if (!link || !window.P4_API) return;
     setSavingApi(true); setApiMsg(null);
@@ -923,6 +955,16 @@ function App() {
           </Section>
 
           <Section title="Resultados do período" collapsible note="▲ pos · – neutro · ▼ neg">
+            {canPullMeli ? (
+              <div style={{ marginBottom: 14 }}>
+                <button type="button" onClick={pullFromMeli} disabled={mlBusy}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid #2D3277', background: '#FFE600', color: '#2D3277', fontWeight: 700, fontSize: 13, padding: '9px 14px', borderRadius: 10, cursor: mlBusy ? 'wait' : 'pointer', opacity: mlBusy ? 0.6 : 1 }}>
+                  <span style={{ fontWeight: 800 }}>ML</span> {mlBusy ? 'Buscando dados…' : 'Puxar do Mercado Livre'}
+                </button>
+                {mlMsg ? <div style={{ fontSize: 11.5, marginTop: 7, color: mlMsg.err ? 'var(--red,#d8423a)' : 'var(--green-ink,#2f9a2b)' }}>{mlMsg.t}</div> : null}
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>Preenche faturamento, vendas, receita e investimento de Ads do período (revise antes de salvar).</div>
+              </div>
+            ) : null}
             <div className="row2">
               <Field label="Faturamento Total" prefix="R$" value={d.faturamento} onChange={set('faturamento')} placeholder="0,00" money tone={tn('faturamento')} onTone={setTone('faturamento')} />
               <Field label="Vendas Totais" suffix="ped." value={d.vendas} onChange={set('vendas')} placeholder="0" numeric />

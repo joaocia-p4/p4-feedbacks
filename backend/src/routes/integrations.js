@@ -183,6 +183,27 @@ router.get(
   })
 );
 
+// Dados para preencher um relatório de um período (Pedidos + Ads agregados).
+router.get(
+  '/mercadolivre/report-data',
+  requireManager,
+  asyncHandler(async (req, res) => {
+    const account = await clientService.getAccountForWrite(accId(req), req.user);
+    if (account.marketplace !== 'Mercado Livre') {
+      throw badRequest('Esta conta não é do Mercado Livre.');
+    }
+    const from = String(req.query.from || '');
+    const to = String(req.query.to || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw badRequest('Informe "from" e "to" no formato AAAA-MM-DD.');
+    }
+    const conn = await meli.getConnection(accId(req));
+    if (!conn) throw badRequest('Conta não conectada ao Mercado Livre.');
+    const data = await meli.reportData(accId(req), from, to);
+    res.json(data);
+  })
+);
+
 // Explorador (admin) — chama qualquer GET da API do ML, pra descobrir endpoints
 // (ex.: a API de Publicidade). Use ?path=/users/me (ou outro caminho).
 router.get(
