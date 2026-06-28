@@ -438,82 +438,6 @@ function MetricsExplorer({ reports }) {
   );
 }
 
-// Integração Mercado Livre — conectar a conta (OAuth), testar os dados e, para
-// admin, explorar a API (descoberta dos endpoints, ex.: Publicidade).
-function MeliConnect({ accId, isAdmin, live }) {
-  const [st, setSt] = React.useState(null); // status da conexão
-  const [busy, setBusy] = React.useState(false);
-  const [result, setResult] = React.useState(null); // resultado de sonda/explorar
-  const [showExp, setShowExp] = React.useState(false);
-  const [path, setPath] = React.useState('/users/me');
-
-  const refresh = React.useCallback(() => {
-    if (!live || !window.P4_API) { setSt({ connected: false, configured: false }); return; }
-    window.P4_API.meliStatus(accId).then(setSt).catch(() => setSt({ connected: false, configured: false }));
-  }, [accId, live]);
-  React.useEffect(() => { setResult(null); setShowExp(false); refresh(); }, [refresh]);
-
-  const run = async (fn) => {
-    setBusy(true); setResult({ carregando: true });
-    try { setResult(await fn()); } catch (e) { setResult({ erro: e.message || 'Falha' }); } finally { setBusy(false); }
-  };
-  const connect = async () => {
-    setBusy(true);
-    try { const r = await window.P4_API.meliConnect(accId); window.location.href = r.url; }
-    catch (e) { alert(e.message || 'Falha ao conectar'); setBusy(false); }
-  };
-  const disconnect = async () => {
-    if (!window.confirm('Desconectar esta conta do Mercado Livre?')) return;
-    setBusy(true);
-    try { await window.P4_API.meliDisconnect(accId); setResult(null); refresh(); }
-    catch (e) { alert(e.message || 'Falha'); } finally { setBusy(false); }
-  };
-
-  if (!live || st == null) return null;
-  const connected = st.connected;
-  const card = { background: 'var(--paper,#fff)', border: '1px solid var(--line,#e9ece9)', borderRadius: 14, padding: '14px 18px', marginBottom: 18 };
-  const ML = '#FFE600', MLTXT = '#2D3277';
-
-  return (
-    <div className="dash-no-break no-print" style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <span style={{ width: 22, height: 22, borderRadius: 6, background: ML, color: MLTXT, fontWeight: 800, fontSize: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>ML</span>
-          <b style={{ fontSize: 13.5 }}>Integração Mercado Livre</b>
-          {connected
-            ? <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--green-ink,#2f9a2b)' }}>● Conectado{st.nickname ? ' · ' + st.nickname : ''}</span>
-            : <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{st.configured ? 'Não conectado' : 'Integração não configurada no servidor'}</span>}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {connected ? (
-            <>
-              <button className="btn-line" style={{ padding: '7px 12px', fontSize: 12.5 }} disabled={busy} onClick={() => run(() => window.P4_API.meliProbe(accId))}>Testar dados</button>
-              {isAdmin ? <button className="btn-line" style={{ padding: '7px 12px', fontSize: 12.5 }} onClick={() => setShowExp((s) => !s)}>Explorar API</button> : null}
-              <button className="btn-line" style={{ padding: '7px 12px', fontSize: 12.5 }} disabled={busy} onClick={disconnect}>Desconectar</button>
-            </>
-          ) : (
-            <button className="btn-accent" style={{ padding: '8px 14px', fontSize: 12.5 }} disabled={busy} onClick={connect}>Conectar Mercado Livre</button>
-          )}
-        </div>
-      </div>
-
-      {showExp && isAdmin ? (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/users/me"
-                 style={{ flex: 1, minWidth: 220, border: '1px solid var(--line,#e9ece9)', borderRadius: 9, padding: '8px 11px', fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }} />
-          <button className="btn-line" style={{ padding: '7px 12px', fontSize: 12.5 }} disabled={busy} onClick={() => run(() => window.P4_API.meliExplore(accId, path))}>Explorar</button>
-        </div>
-      ) : null}
-
-      {result ? (
-        <pre style={{ marginTop: 12, marginBottom: 0, background: '#0d1410', color: '#e6f0e6', borderRadius: 10, padding: '12px 14px', fontSize: 11.5, lineHeight: 1.5, overflow: 'auto', maxHeight: 320 }}>
-          {result.carregando ? 'Carregando…' : JSON.stringify(result, null, 2)}
-        </pre>
-      ) : null}
-    </div>
-  );
-}
-
 function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, generatorHref, onRefresh, toast }) {
   const I = window.Icons;
   const c = client;
@@ -733,10 +657,6 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
                 ))}
               </div>
             )
-            : null}
-
-          {conta.marketplace === 'Mercado Livre' && canManage
-            ? <MeliConnect accId={conta.id} isAdmin={isAdmin} live={live} />
             : null}
 
           <div className="kpis">
