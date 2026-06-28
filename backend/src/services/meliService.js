@@ -181,15 +181,17 @@ function datesInRange(from, to) {
   return out;
 }
 
-// Pedidos pagos de UM dia (paginado). A busca do ML limita o offset a 1000;
-// como um dia raramente passa disso, a soma sai completa.
+// Pedidos de UM dia (paginado), agrupados por status. Sem filtro de status na
+// busca — a classificação (o que conta como venda) é feita depois. A busca do
+// ML limita o offset a 1000; como um dia raramente passa disso, sai completo.
 async function fetchDayOrders(accountId, sellerId, day) {
   const fromISO = `${day}T00:00:00.000-03:00`;
   const toISO = `${day}T23:59:59.999-03:00`;
-  let fat = 0, un = 0, total = 0, trunc = false, offset = 0;
-  for (let i = 0; i < 25; i++) {
+  const buckets = {}; // status → { n, fat, un }
+  let total = 0, trunc = false, offset = 0;
+  for (let i = 0; i < 30; i++) {
     const q =
-      `/orders/search?seller=${sellerId}&order.status=paid` +
+      `/orders/search?seller=${sellerId}` +
       `&order.date_created.from=${encodeURIComponent(fromISO)}` +
       `&order.date_created.to=${encodeURIComponent(toISO)}` +
       `&sort=date_asc&limit=50&offset=${offset}`;
@@ -197,15 +199,18 @@ async function fetchDayOrders(accountId, sellerId, day) {
     if (!r.ok) break;
     const results = r.data.results || [];
     for (const o of results) {
-      fat += o.total_amount || 0;
-      un += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
+      const st = o.status || 'desconhecido';
+      const b = buckets[st] || (buckets[st] = { n: 0, fat: 0, un: 0 });
+      b.n += 1;
+      b.fat += o.total_amount || 0;
+      b.un += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
     }
     total = r.data.paging ? r.data.paging.total : results.length;
     offset += 50;
     if (offset >= total || results.length === 0) break;
     if (offset >= 1000) { trunc = true; break; }
   }
-  return { fat, un, total, trunc };
+  return { buckets, total, trunc };
 }
 
 // Junta os dados de um período (YYYY-MM-DD) para preencher um relatório:
@@ -224,15 +229,25 @@ async function reportData(accountId, from, to) {
   let vendas = 0;
   let pedidos = 0;
   let pedidosTruncados = false;
+  const byStatus = {}; // status → { n, fat, un }
+  // Status que NÃO contam como venda (cancelados/inválidos).
+  const EXCLUDE = new Set(['cancelled', 'invalid']);
   if (sellerId) {
     try { await getValidAccessToken(accountId); } catch (_e) {}
     const days = datesInRange(from, to);
     const perDay = await Promise.all(days.map((day) => fetchDayOrders(accountId, sellerId, day)));
     for (const r of perDay) {
-      faturamento += r.fat;
-      vendas += r.un;
-      pedidos += r.total;
       if (r.trunc) pedidosTruncados = true;
+      for (const [st, b] of Object.entries(r.buckets)) {
+        const t = byStatus[st] || (byStatus[st] = { n: 0, fat: 0, un: 0 });
+        t.n += b.n; t.fat += b.fat; t.un += b.un;
+      }
+    }
+    for (const [st, b] of Object.entries(byStatus)) {
+      if (EXCLUDE.has(st)) continue;
+      faturamento += b.fat;
+      vendas += b.un;
+      pedidos += b.n;
     }
   }
 
@@ -284,6 +299,7 @@ async function reportData(accountId, from, to) {
     vendas,
     pedidos,
     pedidosTruncados,
+    byStatus,
     investimento,
     receitaAds,
     vendasAds,

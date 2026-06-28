@@ -843,11 +843,13 @@ function App() {
         investimento: money(r.investimento),
       }));
       const adsErr = r.ads && r.ads.erro;
+      const sb = r.byStatus ? Object.keys(r.byStatus).sort((a, b) => r.byStatus[b].n - r.byStatus[a].n).map((s) => `${s}:${r.byStatus[s].n}`).join(' · ') : '';
       setMlMsg({
         err: false,
         t: `Preenchido: ${r.pedidos} pedido(s) · fat. R$ ${money(r.faturamento)} · invest. R$ ${money(r.investimento)}` +
           (adsErr ? ' · ⚠ Ads não retornou (confira o acesso de Publicidade)' : ` · ${r.ads.campanhas} campanha(s)`) +
-          (r.pedidosTruncados ? ' · ⚠ algum dia passou de 1000 pedidos (valor pode estar incompleto)' : ''),
+          (r.pedidosTruncados ? ' · ⚠ algum dia passou de 1000 pedidos' : '') +
+          (sb ? ` · status → ${sb}` : ''),
       });
     } catch (e) {
       setMlMsg({ err: true, t: e.message || 'Falha ao buscar dados do Mercado Livre' });
