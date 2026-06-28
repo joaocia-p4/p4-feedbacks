@@ -27,6 +27,7 @@
   --panel-txt:#e8eef0;
   --panel-mut:#8c9aa3;
   --stage:#0e151c;
+  --side-w:240px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -159,7 +160,66 @@ body{
 }
 
 /* ============================================================= APP SHELL (clients / history) */
-.shell{height:100vh;display:flex;flex-direction:column;background:var(--stage)}
+.shell{height:100vh;display:flex;flex-direction:column;background:var(--stage);padding-left:var(--side-w)}
+
+/* ---- menu lateral (sidebar) ---- */
+.app-side{position:fixed;left:0;top:0;bottom:0;width:var(--side-w);background:var(--panel);border-right:1px solid var(--panel-line);display:flex;flex-direction:column;z-index:40}
+.as-brand{display:flex;align-items:center;gap:11px;height:64px;padding:0 18px;border-bottom:1px solid var(--panel-line);flex:none}
+.as-brand img{width:30px;height:30px;object-fit:contain;flex:none}
+.as-brand b{font-size:14px;font-weight:700;color:var(--panel-txt);letter-spacing:-.01em;display:block;line-height:1.1}
+.as-brand .mono{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);display:block;margin-top:2px}
+.as-nav{flex:1;overflow-y:auto;padding:12px 12px 18px;display:flex;flex-direction:column;gap:3px}
+.as-sec{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--panel-mut);font-weight:600;padding:16px 12px 7px}
+.as-sec:first-child{padding-top:6px}
+.as-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;cursor:pointer;color:var(--panel-mut);font-family:'Sora';font-weight:600;font-size:13.5px;padding:10px 12px;border-radius:10px;transition:.14s;text-decoration:none}
+.as-item svg{flex:none}
+.as-item span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-item .ext{flex:none;opacity:.45}
+.as-item:hover{background:var(--panel-2);color:var(--panel-txt)}
+.as-item.on{background:rgba(var(--accent-rgb),.15);color:var(--accent)}
+.as-foot{flex:none;border-top:1px solid var(--panel-line);padding:13px 18px;display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:var(--panel-mut)}
+.as-dot{width:8px;height:8px;border-radius:50%;flex:none}
+
+/* título da página no topbar */
+.tb-title{font-size:15px;font-weight:700;color:var(--panel-txt);letter-spacing:-.01em}
+
+/* responsivo: o menu vira um trilho de ícones */
+@media (max-width:1000px){
+  :root{--side-w:66px}
+  .as-brand{justify-content:center;padding:0;gap:0}
+  .as-brand div{display:none}
+  .as-sec{text-align:center;padding:14px 0 6px;font-size:0;letter-spacing:0}
+  .as-item{justify-content:center;padding:11px 0;gap:0}
+  .as-item span,.as-item .ext{display:none}
+  .as-foot{justify-content:center;padding:13px 0;font-size:0;gap:0}
+}
+
+/* ---- página de configurações ---- */
+.set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:start}
+.set-card{background:var(--paper);border:1px solid var(--line);border-radius:15px;padding:20px}
+.set-h{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.set-h b{font-size:14.5px;font-weight:700}
+.set-ic{width:30px;height:30px;border-radius:9px;background:rgba(var(--accent-rgb),.14);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none}
+.set-acct{display:flex;align-items:center;gap:12px}
+.set-av{width:42px;height:42px;border-radius:11px;background:linear-gradient(140deg,var(--accent),oklch(0.6 0.15 165));color:#0d1410;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none;font-family:'JetBrains Mono',monospace}
+.set-acct-nm{font-size:14px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-acct-em{font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-top:1px solid var(--line)}
+.set-row:first-of-type{border-top:0;padding-top:4px}
+.set-row-t{font-size:13px;font-weight:600}
+.set-row-s{font-size:11.5px;color:var(--muted);font-weight:500;margin-top:3px;max-width:280px;line-height:1.45}
+.set-accs{display:flex;gap:9px;flex:none}
+.set-acc{width:28px;height:28px;border-radius:8px;border:0;cursor:pointer;transition:.13s;padding:0}
+.set-acc:hover{transform:scale(1.08)}
+.set-acc.on{box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--ink)}
+.set-tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:lowercase;color:var(--muted);background:rgba(255,255,255,.06);padding:5px 10px;border-radius:7px;flex:none}
+.set-about{display:flex;flex-direction:column}
+.set-kv{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--line);font-size:13px}
+.set-kv:first-child{border-top:0}
+.set-kv span{color:var(--muted);font-weight:500}
+.set-kv b{font-weight:600}
+.set-card .link{color:var(--accent);cursor:pointer;font-weight:600;text-decoration:none}
+.set-card .link:hover{text-decoration:underline}
 .topbar{
   flex:none;display:flex;align-items:center;gap:18px;height:64px;padding:0 26px;
   background:var(--panel);border-bottom:1px solid var(--panel-line);
@@ -190,10 +250,10 @@ body{
 @media print{
   @page{margin:14mm}
   /* impressão/PDF volta ao tema claro (texto escuro em papel branco) */
-  :root{--ink:#1C242E;--paper:#fff;--line:#e9ece9;--muted:#6b7570;--stage:#fff;--green-ink:#2f9a2b;--red:#d8423a}
+  :root{--ink:#1C242E;--paper:#fff;--line:#e9ece9;--muted:#6b7570;--stage:#fff;--green-ink:#2f9a2b;--red:#d8423a;--side-w:0px}
   html,body{background:#fff !important;color:#1C242E !important}
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
-  .topbar,.twk-panel,[data-omelette-chrome],.toast,.no-print,.duebar,.toolbar{display:none !important}
+  .app-side,.topbar,.twk-panel,[data-omelette-chrome],.toast,.no-print,.duebar,.toolbar{display:none !important}
   .page{background:#fff !important;padding:0 !important}
   .page-inner{max-width:none !important;padding:0 !important}
   .dash-print-head{display:flex !important;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1C242E}
@@ -447,6 +507,7 @@ body{
 <script type="text/babel" src="p4-new-client.jsx"></script>
 <script type="text/babel" src="p4-history.jsx"></script>
 <script type="text/babel" src="p4-cs-dashboard.jsx"></script>
+<script type="text/babel" src="p4-settings.jsx"></script>
 <script type="text/babel" src="p4-shell.jsx"></script>
 </body>
 </html>

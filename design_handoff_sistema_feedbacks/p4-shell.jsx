@@ -16,16 +16,10 @@ function TopBar({ title, user, role, onBack, onLogout, onManageUsers }) {
   const isAdmin = role === 'admin';
   return (
     <div className="topbar">
-      <div className="tb-brand">
-        <img src="assets/p4-mark-white.png" alt="P4" />
-        <div>
-          <b>Método P4</b>
-          <span className="mono">Relatórios</span>
-        </div>
-      </div>
       {onBack
         ? <button className="tb-back" onClick={onBack}><I.back size={16} /> Voltar</button>
         : null}
+      <div className="tb-title">{title}</div>
       <div className="tb-spacer"></div>
       <div className="tb-user" ref={ref} onClick={() => setOpen((o) => !o)}>
         <div className="avatar">{user.iniciais}</div>
@@ -48,6 +42,54 @@ function TopBar({ title, user, role, onBack, onLogout, onManageUsers }) {
   );
 }
 window.TopBar = TopBar;
+
+// ---------------------------------------------------------------- Sidebar (menu lateral)
+function Sidebar({ user, role, screen, onNav }) {
+  const I = window.Icons;
+  const seesPanel = role === 'admin' || role === 'cs';
+  const clientsActive = screen === 'clients' || screen === 'history' || screen === 'new' || screen === 'edit';
+  const live = !!(window.P4_API && window.P4_API.isLogged());
+  const gridIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+  );
+  const chartIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><rect x="7" y="10" width="3" height="7" /><rect x="13" y="6" width="3" height="11" /></svg>
+  );
+  const docIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h6" /></svg>
+  );
+  return (
+    <aside className="app-side">
+      <div className="as-brand">
+        <img src="assets/p4-mark-white.png" alt="P4" />
+        <div><b>Método P4</b><span className="mono">Feedbacks</span></div>
+      </div>
+      <nav className="as-nav">
+        <div className="as-sec">Menu</div>
+        <button className={'as-item' + (clientsActive ? ' on' : '')} onClick={() => onNav('clients')} title="Clientes">
+          {gridIcon}<span>Clientes</span>
+        </button>
+        {seesPanel
+          ? <button className={'as-item' + (screen === 'dashboard' ? ' on' : '')} onClick={() => onNav('dashboard')} title="Painel CS">
+              {chartIcon}<span>Painel CS</span>
+            </button>
+          : null}
+        <button className={'as-item' + (screen === 'settings' ? ' on' : '')} onClick={() => onNav('settings')} title="Configurações">
+          <I.cog size={18} /><span>Configurações</span>
+        </button>
+        <div className="as-sec">Ferramentas</div>
+        <a className="as-item" href="gerador.html" target="_blank" rel="noopener" title="Gerador de relatório">
+          {docIcon}<span>Gerador</span><span className="ext"><I.open size={12} /></span>
+        </a>
+      </nav>
+      <div className="as-foot">
+        <span className="as-dot" style={{ background: live ? 'var(--green)' : 'var(--amber)' }}></span>
+        {live ? 'Online' : 'Demonstração'}
+      </div>
+    </aside>
+  );
+}
+window.Sidebar = Sidebar;
 
 // ---------------------------------------------------------------- Users modal (admin)
 function initialsOf(nome) {
@@ -389,6 +431,8 @@ function App() {
   const back = () => { setScreen('clients'); setClientId(null); setDetail(null); loadClients(); };
   const newClient = () => { setClientId(null); setDetail(null); setScreen('new'); };
   const editClient = (id) => { setClientId(id); setScreen('edit'); loadDetail(id); };
+  // navegação do menu lateral
+  const navTo = (s) => { if (s === 'clients') { back(); return; } setScreen(s); };
 
   const saveClient = async (payload) => {
     if (live) {
@@ -448,12 +492,17 @@ function App() {
       : resolvedDetail
         ? <window.History client={resolvedDetail} user={user} role={role} onBack={back} onEdit={() => editClient(resolvedDetail.id)} onLogout={logout} onManageUsers={() => setUsersOpen(true)} generatorHref={GENERATOR_HREF} onRefresh={() => loadDetail(resolvedDetail.id, { silent: true })} toast={toast} />
         : <LoadingScreen label="Cliente não encontrado." />;
+  } else if (screen === 'settings') {
+    content = <window.Settings user={user} role={role} accent={t.accent} layout={t.layout}
+      onSetAccent={(v) => setTweak('accent', v)} onSetLayout={(v) => setTweak('layout', v)}
+      onManageUsers={() => setUsersOpen(true)} onLogout={logout} toast={toast} />;
   } else {
     content = <window.Clients user={user} role={role} layout={t.layout} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onGotoDashboard={() => setScreen('dashboard')} toast={toast} />;
   }
 
   return (
     <>
+      {user ? <Sidebar user={user} role={role} screen={screen} onNav={navTo} /> : null}
       {content}
       {user && usersOpen ? <UsersModal me={user} onClose={() => setUsersOpen(false)} toast={toast} /> : null}
       {toastMsg ? <div className="toast"><span className="d"></span>{toastMsg}</div> : null}
