@@ -42,7 +42,8 @@ async function postToken(params) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw badRequest(`Mercado Livre recusou o token: ${data.message || data.error || res.status}`);
+    const detail = data.error || data.message || `HTTP ${res.status}`;
+    throw badRequest(`Mercado Livre recusou o token: ${detail}`, data);
   }
   return data;
 }

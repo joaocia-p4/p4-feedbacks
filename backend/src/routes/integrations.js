@@ -58,8 +58,9 @@ router.get(
       return frontRedirect(res, 'connected');
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[meli] callback: falha na troca do code por token:', e.message);
-      return frontRedirect(res, 'error', 'token');
+      console.error('[meli] callback: falha na troca do code por token:', e.message, JSON.stringify(e.details || {}));
+      const detail = String(e.message || 'token').replace('Mercado Livre recusou o token: ', '');
+      return frontRedirect(res, 'error', detail.slice(0, 100));
     }
   })
 );
