@@ -54,6 +54,20 @@ router.get(
   })
 );
 
+// ── Notificações / webhook (público) ─────────────────────────────────────────
+// O Mercado Livre exige uma URL de notificações no app. Por ora apenas
+// confirmamos o recebimento (200) para o ML não ficar reenviando; o
+// processamento em tempo real (novos pedidos etc.) fica para uma fase futura.
+router.post('/mercadolivre/notifications', (req, res) => {
+  try {
+    const b = req.body || {};
+    // eslint-disable-next-line no-console
+    console.log('[meli] notificação:', b.topic || '?', b.resource || '');
+  } catch (_e) {}
+  res.sendStatus(200);
+});
+router.get('/mercadolivre/notifications', (_req, res) => res.sendStatus(200));
+
 // ── Rotas autenticadas ───────────────────────────────────────────────────────
 router.use(authenticate);
 
