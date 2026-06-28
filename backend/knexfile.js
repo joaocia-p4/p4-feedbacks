@@ -10,12 +10,26 @@ const seeds = { directory: path.join(__dirname, 'src/db/seeds') };
 
 let connectionConfig;
 
+// Remove sslmode/channel_binding da URL: o controle de SSL fica só no objeto
+// `ssl` abaixo, evitando o aviso do driver ("'require' tratado como 'verify-full'")
+// e qualquer ambiguidade de configuração.
+function stripSslParams(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    u.searchParams.delete('sslmode');
+    u.searchParams.delete('channel_binding');
+    return u.toString();
+  } catch (_e) {
+    return rawUrl;
+  }
+}
+
 if (config.db.url) {
   // PostgreSQL (production)
   connectionConfig = {
     client: 'pg',
     connection: {
-      connectionString: config.db.url,
+      connectionString: stripSslParams(config.db.url),
       ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
     },
     pool: { min: 0, max: 10 },
