@@ -192,7 +192,11 @@ router.get(
     await clientService.getAccountForRead(accId(req), req.user);
     let path = String(req.query.path || '/users/me');
     if (!path.startsWith('/') && !path.startsWith('http')) path = '/' + path;
-    const r = await meli.apiGet(accId(req), path);
+    // Endpoints de Publicidade (Mercado Ads) exigem o cabeçalho Api-Version.
+    const headers = {};
+    if (/advertising/.test(path)) headers['Api-Version'] = String(req.query.v || '1');
+    else if (req.query.v) headers['Api-Version'] = String(req.query.v);
+    const r = await meli.apiGet(accId(req), path, { headers });
     res.json(r);
   })
 );

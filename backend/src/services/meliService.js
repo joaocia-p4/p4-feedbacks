@@ -132,11 +132,12 @@ async function getValidAccessToken(accountId) {
 
 // GET na API do Mercado Livre com o token da conta. Não lança em erro HTTP:
 // devolve { ok, status, data } para facilitar a exploração/diagnóstico.
-async function apiGet(accountId, path, retry = true) {
+async function apiGet(accountId, path, opts = {}) {
+  const { headers = {}, retry = true } = opts;
   const token = await getValidAccessToken(accountId);
   const url = path.startsWith('http') ? path : `${M.apiHost}${path}`;
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...headers },
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && retry) {
@@ -144,7 +145,7 @@ async function apiGet(accountId, path, retry = true) {
     if (conn && conn.refresh_token) {
       const tok = await refreshTokens(conn.refresh_token);
       await saveConnection(accountId, tok);
-      return apiGet(accountId, path, false);
+      return apiGet(accountId, path, { ...opts, retry: false });
     }
   }
   return { ok: res.ok, status: res.status, data };
