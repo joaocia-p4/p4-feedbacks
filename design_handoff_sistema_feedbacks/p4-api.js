@@ -82,6 +82,13 @@
   }
   async function deleteReport(id) { return apiFetch('/reports/' + encodeURIComponent(id), { method: 'DELETE' }); }
 
+  // integração Mercado Livre (OAuth + dados)
+  async function meliStatus(accId) { return apiFetch('/integrations/mercadolivre/status' + qs({ accountId: accId })); }
+  async function meliConnect(accId) { return apiFetch('/integrations/mercadolivre/connect' + qs({ accountId: accId })); }
+  async function meliDisconnect(accId) { return apiFetch('/integrations/mercadolivre/connection' + qs({ accountId: accId }), { method: 'DELETE' }); }
+  async function meliProbe(accId) { return apiFetch('/integrations/mercadolivre/probe' + qs({ accountId: accId })); }
+  async function meliExplore(accId, path) { return apiFetch('/integrations/mercadolivre/explore' + qs({ accountId: accId, path })); }
+
   function isLogged() { return !!token(); }
 
   // backend disponível? (checagem curta, não trava a UI)
@@ -102,5 +109,6 @@
     listClients, getClient, createClient, updateClient, deleteClient,
     listReports, createReport, deleteReport,
     getDashboard,
+    meliStatus, meliConnect, meliDisconnect, meliProbe, meliExplore,
   };
 })();

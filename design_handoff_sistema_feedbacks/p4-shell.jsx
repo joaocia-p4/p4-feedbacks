@@ -334,6 +334,19 @@ function App() {
 
   const toast = (msg) => { setToastMsg(msg); window.clearTimeout(toast._t); toast._t = window.setTimeout(() => setToastMsg(null), 2200); };
 
+  // Retorno do OAuth do Mercado Livre (?meli=connected|error) → avisa e limpa a URL.
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const m = p.get('meli');
+      if (!m) return;
+      toast(m === 'connected' ? 'Mercado Livre conectado ✅' : 'Não foi possível conectar ao Mercado Livre');
+      p.delete('meli');
+      const qs = p.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? '?' + qs : ''));
+    } catch (e) {}
+  }, []);
+
   const role = t.roleOverride !== 'auto' ? t.roleOverride : (user ? user.papel : 'analista');
 
   // ---- carga de dados (banco quando logado; senão, mock window.P4_*) ----

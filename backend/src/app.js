@@ -11,6 +11,7 @@ const clientRoutes = require('./routes/clients');
 const reportRoutes = require('./routes/reports');
 const userRoutes = require('./routes/users');
 const dashboardRoutes = require('./routes/dashboard');
+const integrationRoutes = require('./routes/integrations');
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use('/auth', authRoutes);
 app.use('/clients', clientRoutes);
 app.use('/users', userRoutes);
 app.use('/dashboard', dashboardRoutes);
+app.use('/integrations', integrationRoutes);
 app.use('/', reportRoutes); // /accounts/:accId/reports and /reports/:id
 
 // ── errors ───────────────────────────────────────────────────────────────────

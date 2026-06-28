@@ -36,6 +36,18 @@ const config = {
   },
 
   seedPassword: process.env.SEED_PASSWORD || 'metodop4',
+
+  // URL pública do front-end (para redirecionar de volta após o OAuth do ML).
+  frontendUrl: (process.env.FRONTEND_URL || '').replace(/\/+$/, ''),
+
+  // Integração com o Mercado Livre (OAuth). Credenciais do app de desenvolvedor.
+  meli: {
+    appId: process.env.MELI_APP_ID || '',
+    secret: process.env.MELI_SECRET || '',
+    redirectUri: (process.env.MELI_REDIRECT_URI || '').trim(),
+    authHost: process.env.MELI_AUTH_HOST || 'https://auth.mercadolivre.com.br',
+    apiHost: 'https://api.mercadolibre.com',
+  },
 };
 
 // Fail fast in production if the JWT secret was left at the insecure default.
