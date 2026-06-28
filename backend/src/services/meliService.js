@@ -230,8 +230,9 @@ async function reportData(accountId, from, to) {
   let pedidos = 0;
   let pedidosTruncados = false;
   const byStatus = {}; // status → { n, fat, un }
-  // Status que NÃO contam como venda (cancelados/inválidos).
-  const EXCLUDE = new Set(['cancelled', 'invalid']);
+  // "Vendas brutas" do painel do ML inclui as canceladas (mostradas à parte),
+  // então contamos tudo e excluímos só inválidas/teste.
+  const EXCLUDE = new Set(['invalid']);
   if (sellerId) {
     try { await getValidAccessToken(accountId); } catch (_e) {}
     const days = datesInRange(from, to);
