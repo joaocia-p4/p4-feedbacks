@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db/knex');
 const config = require('../config');
 const { badRequest } = require('../lib/errors');
+const { encrypt, decrypt } = require('../lib/secrets');
 
 const M = config.meli;
 
@@ -105,8 +106,8 @@ function expiryISO(expiresInSec) {
 async function saveConnection(accountId, tok, extra = {}) {
   const now = new Date().toISOString();
   const patch = {
-    access_token: tok.access_token,
-    refresh_token: tok.refresh_token || null,
+    access_token: encrypt(tok.access_token),
+    refresh_token: tok.refresh_token ? encrypt(tok.refresh_token) : null,
     scope: tok.scope || null,
     expires_at: expiryISO(tok.expires_in),
     atualizado_em: now,
@@ -139,11 +140,11 @@ async function getValidAccessToken(accountId) {
   const exp = conn.expires_at ? Date.parse(conn.expires_at) : 0;
   if (!exp || exp - Date.now() < 5 * 60 * 1000) {
     if (!conn.refresh_token) throw badRequest('Conexão expirada. Reconecte a conta do Mercado Livre.');
-    const tok = await refreshTokens(conn.refresh_token);
-    const saved = await saveConnection(accountId, tok);
-    return saved.access_token;
+    const tok = await refreshTokens(decrypt(conn.refresh_token));
+    await saveConnection(accountId, tok);
+    return tok.access_token;
   }
-  return conn.access_token;
+  return decrypt(conn.access_token);
 }
 
 // GET na API do Mercado Livre com o token da conta. Não lança em erro HTTP:
@@ -159,7 +160,7 @@ async function apiGet(accountId, path, opts = {}) {
   if (res.status === 401 && retry) {
     const conn = await getConnection(accountId);
     if (conn && conn.refresh_token) {
-      const tok = await refreshTokens(conn.refresh_token);
+      const tok = await refreshTokens(decrypt(conn.refresh_token));
       await saveConnection(accountId, tok);
       return apiGet(accountId, path, { ...opts, retry: false });
     }
