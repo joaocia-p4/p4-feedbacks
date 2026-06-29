@@ -88,6 +88,14 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const [st, setSt] = React.useState('Todos');
   const [dueOn, setDueOn] = React.useState(false);
   const [dueDate, setDueDate] = React.useState(window.P4_TODAY);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
 
   const isAdmin = role === 'admin';
   const canManage = role === 'admin' || role === 'analista'; // CS é somente leitura
@@ -179,11 +187,20 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
                       {closedN > 0 ? <> · {closedN} encerrado{closedN === 1 ? '' : 's'}</> : null}</>}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {canManage ? <button className="btn-line" onClick={exportClients} title="Exportar todos os clientes para editar em massa">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v10" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></svg> Exportar planilha
-              </button> : null}
-              {canManage && onImport ? <button className="btn-line" onClick={onImport}><I.upload size={16} /> Importar planilha</button> : null}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {canManage ? (
+                <div style={{ position: 'relative' }} ref={menuRef}>
+                  <button className={'km-btn' + (menuOpen ? ' on' : '')} onClick={() => setMenuOpen((o) => !o)} title="Ações em massa" aria-label="Ações em massa">
+                    <I.dots size={18} />
+                  </button>
+                  {menuOpen ? (
+                    <div className="km-menu">
+                      {onImport ? <button className="km-item" onClick={() => { setMenuOpen(false); onImport(); }}><I.upload size={16} /> Adicionar clientes em massa</button> : null}
+                      <button className="km-item" onClick={() => { setMenuOpen(false); exportClients(); }}><I.edit size={16} /> Editar clientes em massa</button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {canManage ? <button className="btn-accent" onClick={onNewClient}><I.plus size={16} /> Adicionar cliente</button> : null}
             </div>
           </div>

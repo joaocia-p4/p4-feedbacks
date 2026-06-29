@@ -309,6 +309,16 @@ body{
 .btn-line.danger-line{color:var(--red)}
 .btn-line.danger-line:hover{border-color:var(--red);background:rgba(216,66,58,.06)}
 
+/* menu "⋯" (ações em massa) */
+.km-btn{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--paper);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:.14s;flex:none}
+.km-btn:hover,.km-btn.on{border-color:var(--accent);color:var(--green-ink);background:rgba(var(--accent-rgb),.07)}
+.km-menu{position:absolute;top:48px;right:0;z-index:40;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:6px;min-width:226px;box-shadow:0 18px 44px -16px rgba(28,36,46,.28);animation:kmin .14s ease}
+@keyframes kmin{from{opacity:0;transform:translateY(-6px)}}
+.km-item{width:100%;display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:8px;border:0;background:none;cursor:pointer;font-family:'Sora';font-weight:600;font-size:13px;color:var(--ink);text-align:left;transition:.12s}
+.km-item:hover{background:rgba(var(--accent-rgb),.08);color:var(--green-ink)}
+.km-item svg{flex:none;color:var(--muted)}
+.km-item:hover svg{color:var(--green-ink)}
+
 /* ---- client cards grid ---- */
 .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(296px,1fr));gap:16px}
 .ccard{
