@@ -88,6 +88,7 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const [st, setSt] = React.useState('Todos');
   const [dueOn, setDueOn] = React.useState(false);
   const [dueDate, setDueDate] = React.useState(window.P4_TODAY);
+  const [an, setAn] = React.useState('Todos');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef(null);
   React.useEffect(() => {
@@ -108,10 +109,13 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const closedN = scoped.length - activeScoped.length;
 
   const markets = ['Todos', ...(window.P4_AD_MARKETPLACES || []).filter((m) => scoped.some((c) => c.marketplaces.includes(m)))];
+  // analistas com clientes no escopo (filtro só faz sentido p/ quem vê todos)
+  const analistOptions = [...new Set(scoped.map((c) => c.analista).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
 
   const dueMatch = (c) => !c.encerrado && (window.isDueOn(c.agenda, dueDate) || c.status === 'atrasado');
   let list = scoped.filter((c) => {
     if (dueOn && !dueMatch(c)) return false;
+    if (seesAll && an !== 'Todos' && c.analista !== an) return false;
     if (mk !== 'Todos' && !c.marketplaces.includes(mk)) return false;
     if (st === 'Em dia' && (c.encerrado || c.status !== 'em-dia')) return false;
     if (st === 'Atrasado' && (c.encerrado || c.status !== 'atrasado')) return false;
@@ -252,6 +256,15 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
               <I.search size={17} />
               <input placeholder="Buscar por loja, analista ou marketplace…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
+            {seesAll && analistOptions.length > 1 ? (
+              <div className={'filter-select' + (an !== 'Todos' ? ' on' : '')}>
+                <I.users size={16} />
+                <select value={an} onChange={(e) => setAn(e.target.value)} title="Filtrar por analista">
+                  <option value="Todos">Todos os analistas</option>
+                  {analistOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+            ) : null}
             <div className="chips">
               {markets.map((m) => (
                 <button key={m} className={'chip' + (mk === m ? ' on' : '')} onClick={() => setMk(m)}>

@@ -279,6 +279,16 @@ body{
 .search input{flex:1;border:0;outline:none;background:transparent;font-family:'Sora';font-size:13.5px;font-weight:500;color:var(--ink);padding:11px 0}
 .search input::placeholder{color:#9aa39d}
 
+/* filtro dropdown (analista) */
+.filter-select{position:relative;display:flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:0 30px 0 12px;transition:.15s;flex:none}
+.filter-select:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.12)}
+.filter-select.on{border-color:rgba(var(--accent-rgb),.55)}
+.filter-select > svg{color:var(--muted);flex:none}
+.filter-select.on > svg{color:var(--green-ink)}
+.filter-select select{appearance:none;border:0;outline:none;background:transparent;font-family:'Sora';font-size:13px;font-weight:600;color:var(--ink);padding:10px 0;cursor:pointer;max-width:180px}
+.filter-select.on select{color:var(--green-ink)}
+.filter-select::after{content:"▾";position:absolute;right:12px;color:var(--muted);font-size:11px;pointer-events:none}
+
 .chips{display:flex;gap:7px;flex-wrap:wrap}
 .chip{appearance:none;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--muted);font-family:'Sora';font-size:12px;font-weight:600;padding:8px 13px;border-radius:999px;transition:.14s;display:flex;align-items:center;gap:7px}
 .chip:hover{border-color:#c9cfca;color:var(--ink)}
