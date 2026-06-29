@@ -962,7 +962,7 @@ function App() {
                     {mlBusy ? <span className="ml-spin"></span> : <span className="ml-badge">ML</span>}
                     {mlBusy ? 'Buscando dados…' : 'Puxar do Mercado Livre'}
                     {!mlBusy ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D3277" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v10" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D3277" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v10" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></svg>
                     ) : null}
                   </button>
                   <span className="ml-help" tabIndex={0} role="button" aria-label="O que este botão faz?">?
