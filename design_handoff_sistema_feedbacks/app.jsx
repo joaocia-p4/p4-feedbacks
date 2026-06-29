@@ -1008,27 +1008,27 @@ function App() {
 
         <div className="panel-foot">
           {link ? (
-            <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 13, background: 'linear-gradient(180deg, rgba(86,213,79,.12), rgba(86,213,79,.04))', border: '1px solid rgba(86,213,79,.32)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 11.5, color: 'var(--muted)' }}>
-                <span style={{ width: 7, height: 7, borderRadius: 999, background: '#56D54F', boxShadow: '0 0 0 3px rgba(86,213,79,.18)' }}></span>
-                Vinculado a <b style={{ color: 'inherit' }}>{link.loja}</b> · {link.marketplace}
-              </div>
-              <button type="button" className="btn-primary" onClick={saveToSystem} disabled={savingApi || !loggedIn}
-                style={{ width: '100%', opacity: savingApi || !loggedIn ? 0.5 : 1, cursor: savingApi || !loggedIn ? 'not-allowed' : 'pointer' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                {savingApi ? 'Salvando…' : 'Salvar no sistema'}
-              </button>
-              {!loggedIn ? <div style={{ fontSize: 11.5, color: '#ff7a72', marginTop: 9 }}>Entre no sistema (aba de Telas) para salvar no banco.</div> : null}
-              {apiMsg ? <div style={{ fontSize: 12.5, fontWeight: 700, color: apiMsg.ok ? '#56D54F' : '#ff7a72', marginTop: 9 }}>{apiMsg.text}</div> : null}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--muted)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: '#56D54F', boxShadow: '0 0 0 3px rgba(86,213,79,.18)', flex: 'none' }}></span>
+              Vinculado a <b style={{ color: 'inherit' }}>{link.loja}</b> · {link.marketplace}
             </div>
           ) : null}
           <div className="foot-main">
+            {link ? (
+              <button type="button" className="btn-primary" onClick={saveToSystem} disabled={savingApi || !loggedIn}
+                style={{ opacity: savingApi || !loggedIn ? 0.5 : 1, cursor: savingApi || !loggedIn ? 'not-allowed' : 'pointer' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                {savingApi ? 'Salvando…' : 'Salvar no sistema'}
+              </button>
+            ) : null}
             <button className="btn-primary" onClick={print} title={link ? 'Salva no sistema e baixa o PDF' : 'Baixar o PDF'}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
               Baixar PDF
             </button>
           </div>
-          {link && loggedIn ? <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center', marginTop: 6 }}>Baixar PDF já salva no sistema automaticamente.</div> : null}
+          {link && !loggedIn ? <div style={{ fontSize: 11.5, color: '#ff7a72' }}>Entre no sistema (aba de Telas) para salvar no banco.</div> : null}
+          {apiMsg ? <div style={{ fontSize: 12.5, fontWeight: 700, color: apiMsg.ok ? '#56D54F' : '#ff7a72' }}>{apiMsg.text}</div> : null}
+          {link && loggedIn ? <div style={{ fontSize: 10.5, color: 'var(--muted)', textAlign: 'center' }}>Baixar PDF já salva no sistema automaticamente.</div> : null}
           <button type="button" className="btn-ghost sm" onClick={reset} style={{ marginTop: 8, width: '100%' }}>Limpar período atual</button>
         </div>
       </aside>
