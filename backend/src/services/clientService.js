@@ -108,9 +108,10 @@ function assembleClient(clientRow, accountRows, reportsByAccount, asOf) {
 
 // Drop heavy report arrays for the list response (card only needs derived data).
 function slimClient(c) {
-  const { observacoes, ...rest } = c; // notas só no detalhe, não na lista
+  // mantém tudo (inclusive observações, para exportar/editar em massa); só remove
+  // os arrays pesados de relatórios das contas.
   return {
-    ...rest,
+    ...c,
     contas: c.contas.map(({ reports, ...r }) => r),
   };
 }

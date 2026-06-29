@@ -131,6 +131,37 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const firstName = (user && user.nome) ? user.nome.split(' ')[0] : '';
 
+  // Exporta TODOS os clientes do escopo para .xlsx no mesmo formato da importação
+  // (com ID Cliente / ID Conta), para editar em massa e reimportar atualizando.
+  const exportClients = () => {
+    if (!window.XLSX) { toast('Recarregue a página (Ctrl+Shift+R) e tente novamente.'); return; }
+    const metaStr = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : (v == null ? '' : String(v)));
+    const headers = ['ID Cliente', 'Loja', 'Tipo', 'Analista', 'Marketplace', 'ID Conta', 'Conta', 'Meta Investimento', 'Meta ROAS', 'Meta ACOS', 'Meta TACOS', 'Data entrada', 'Data encerramento', 'Status', 'Frequência', 'Dia', 'Observações'];
+    const rows = [headers];
+    scoped.forEach((c) => {
+      const ag = c.agenda || {};
+      const freq = ag.freq || 'Semanal';
+      const dia = freq === 'Mensal' ? (ag.diaMes != null ? String(ag.diaMes) : '') : (ag.diaSemana || '');
+      const cts = (c.contas && c.contas.length) ? c.contas : (c.marketplaces || []).map((m) => ({ marketplace: m }));
+      cts.forEach((m, i) => {
+        rows.push([
+          c.id || '', c.loja || '', c.tipo || 'Loja', c.analista || '',
+          m.marketplace || '', m.id || '', m.conta || '',
+          metaStr(m.metaInvestimento), metaStr(m.metaRoas), metaStr(m.metaAcos), metaStr(m.metaTacos),
+          m.dataEntrada || '', m.dataEncerramento || '', m.ativo === false ? 'Encerrado' : 'Ativo',
+          i === 0 ? freq : '', i === 0 ? dia : '', i === 0 ? (c.observacoes || '') : '',
+        ]);
+      });
+    });
+    if (rows.length <= 1) { toast('Nenhum cliente para exportar.'); return; }
+    const ws = window.XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = headers.map((h) => ({ wch: Math.max(11, h.length + 1) }));
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+    window.XLSX.writeFile(wb, `clientes-${window.P4_TODAY || 'export'}.xlsx`);
+    toast(`Planilha exportada · ${scoped.length} cliente(s)`);
+  };
+
   return (
     <div className="shell">
       <window.TopBar title="Clientes" user={user} role={role} onLogout={onLogout} onManageUsers={onManageUsers} />
@@ -149,6 +180,9 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
+              {canManage ? <button className="btn-line" onClick={exportClients} title="Exportar todos os clientes para editar em massa">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v10" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></svg> Exportar planilha
+              </button> : null}
               {canManage && onImport ? <button className="btn-line" onClick={onImport}><I.upload size={16} /> Importar planilha</button> : null}
               {canManage ? <button className="btn-accent" onClick={onNewClient}><I.plus size={16} /> Adicionar cliente</button> : null}
             </div>

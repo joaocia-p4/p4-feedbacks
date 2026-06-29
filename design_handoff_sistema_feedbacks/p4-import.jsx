@@ -21,6 +21,7 @@ const resolveMk = (v) => MK_ALIAS[impNorm(v)] || null;
 const resolveTipo = (v) => { const n = impNorm(v); if (!n) return 'Loja'; if (n === 'loja') return 'Loja'; if (n === 'marca') return 'Marca'; return null; };
 const resolveFreq = (v) => { const n = impNorm(v); if (!n) return 'Semanal'; if (n.indexOf('seman') === 0) return 'Semanal'; if (n.indexOf('quinz') === 0) return 'Quinzenal'; if (n.indexOf('mens') === 0) return 'Mensal'; return null; };
 const resolveWeekday = (v) => { const n = impNorm(v); if (!n) return null; return IMP_WEEKDAYS.find((w) => impNorm(w) === n || impNorm(w).indexOf(n) === 0) || null; };
+const resolveStatus = (v) => { const n = impNorm(v); return (n === 'encerrado' || n === 'encerrada' || n === 'inativo' || n === 'inativa' || n === 'nao' || n === 'false' || n === '0') ? false : true; };
 
 // aliases de cabeçalho aceitos para cada campo
 const FIELD_ALIASES = {
@@ -36,6 +37,11 @@ const FIELD_ALIASES = {
   freq: ['frequencia', 'freq', 'periodicidade'],
   dia: ['dia', 'dia da semana', 'dia do mes', 'dia de envio', 'dia envio'],
   observacoes: ['observacoes', 'obs', 'observacao', 'notas'],
+  clienteId: ['id cliente', 'id do cliente', 'clienteid'],
+  contaId: ['id conta', 'id da conta', 'contaid'],
+  dataEntrada: ['data entrada', 'data de entrada', 'entrada'],
+  dataEncerramento: ['data encerramento', 'data de encerramento', 'encerramento'],
+  status: ['status', 'ativo', 'situacao'],
 };
 const pick = (rowNorm, field) => {
   for (const a of FIELD_ALIASES[field]) {
@@ -54,12 +60,25 @@ function impGroupRows(rawRows) {
     if (!loja) return;
     const key = impNorm(loja);
     if (!groups.has(key)) {
-      groups.set(key, { loja, tipoRaw: pick(rn, 'tipo'), analistaRaw: pick(rn, 'analista'), freqRaw: pick(rn, 'freq'), diaRaw: pick(rn, 'dia'), observacoes: pick(rn, 'observacoes'), rows: [] });
+      groups.set(key, { loja, clienteId: '', tipoRaw: '', analistaRaw: '', freqRaw: '', diaRaw: '', observacoes: '', rows: [] });
     }
     const g = groups.get(key);
+    // campos no nível do cliente: a primeira linha com valor não-vazio vence
+    const setIf = (field, val) => { if (val && !g[field]) g[field] = val; };
+    setIf('clienteId', pick(rn, 'clienteId'));
+    setIf('tipoRaw', pick(rn, 'tipo'));
+    setIf('analistaRaw', pick(rn, 'analista'));
+    setIf('freqRaw', pick(rn, 'freq'));
+    setIf('diaRaw', pick(rn, 'dia'));
+    setIf('observacoes', pick(rn, 'observacoes'));
     const metas = { metaInvestimento: pick(rn, 'metaInvestimento'), metaRoas: pick(rn, 'metaRoas'), metaAcos: pick(rn, 'metaAcos'), metaTacos: pick(rn, 'metaTacos') };
     const conta = pick(rn, 'conta');
-    pick(rn, 'marketplace').split(/[,;/|]+/).map((s) => s.trim()).filter(Boolean).forEach((mk) => g.rows.push({ mkRaw: mk, conta, ...metas }));
+    const dataEntrada = pick(rn, 'dataEntrada');
+    const dataEncerramento = pick(rn, 'dataEncerramento');
+    const status = pick(rn, 'status');
+    const mks = pick(rn, 'marketplace').split(/[,;/|]+/).map((s) => s.trim()).filter(Boolean);
+    const contaId = pick(rn, 'contaId');
+    mks.forEach((mk) => g.rows.push({ mkRaw: mk, conta, contaId: mks.length === 1 ? contaId : '', dataEntrada, dataEncerramento, status, ...metas }));
   });
   return [...groups.values()];
 }
@@ -68,6 +87,12 @@ function impGroupRows(rawRows) {
 function impBuildClient(g, ctx) {
   const errors = [];
   const warnings = [];
+  // ID Cliente preenchido e existente → ATUALIZA; senão → cria novo
+  const cid = (g.clienteId || '').trim();
+  const existing = cid ? ctx.existingById.get(cid) : null;
+  const isUpdate = !!existing;
+  if (cid && !existing) warnings.push('ID Cliente não encontrado — será criado um novo cliente');
+
   const tipo = resolveTipo(g.tipoRaw);
   if (tipo === null) errors.push(`Tipo inválido: "${g.tipoRaw}" (use Loja ou Marca)`);
 
@@ -99,16 +124,29 @@ function impBuildClient(g, ctx) {
   g.rows.forEach((c) => {
     const mk = resolveMk(c.mkRaw);
     if (!mk) { errors.push(`Marketplace inválido: "${c.mkRaw}"`); return; }
-    if (seen.has(mk)) return;
-    seen.add(mk);
-    contas.push({ marketplace: mk, conta: c.conta || '', metaInvestimento: c.metaInvestimento || '', metaRoas: c.metaRoas || '', metaAcos: c.metaAcos || '', metaTacos: c.metaTacos || '' });
+    // dedup por ID da conta (ou marketplace+apelido) — permite 2 contas do mesmo mk
+    const dedupKey = (c.contaId && String(c.contaId).trim()) || (mk + '|' + impNorm(c.conta || ''));
+    if (seen.has(dedupKey)) return;
+    seen.add(dedupKey);
+    contas.push({
+      id: c.contaId ? String(c.contaId).trim() : undefined,
+      marketplace: mk,
+      conta: c.conta || '',
+      metaInvestimento: c.metaInvestimento || '',
+      metaRoas: c.metaRoas || '',
+      metaAcos: c.metaAcos || '',
+      metaTacos: c.metaTacos || '',
+      dataEntrada: c.dataEntrada || '',
+      dataEncerramento: c.dataEncerramento || '',
+      ativo: resolveStatus(c.status),
+    });
   });
   if (!contas.length) errors.push('Nenhum marketplace válido');
 
-  if (ctx.existingNames && ctx.existingNames.has(impNorm(g.loja))) warnings.push('Já existe um cliente com este nome (será criado outro)');
+  if (!isUpdate && ctx.existingNames && ctx.existingNames.has(impNorm(g.loja))) warnings.push('Já existe um cliente com este nome (será criado outro)');
 
   const payload = {
-    id: null,
+    id: isUpdate ? existing.id : null,
     loja: g.loja,
     tipo: tipo || 'Loja',
     analistaId: analistaId || undefined,
@@ -117,7 +155,7 @@ function impBuildClient(g, ctx) {
     agenda,
     observacoes: g.observacoes || '',
   };
-  return { loja: g.loja, analistaNome, tipo: tipo || 'Loja', agenda, marketplaces: contas.map((c) => c.marketplace), errors, warnings, payload };
+  return { loja: g.loja, analistaNome, tipo: tipo || 'Loja', agenda, marketplaces: contas.map((c) => c.marketplace), errors, warnings, isUpdate, clienteId: isUpdate ? existing.id : null, payload };
 }
 
 function ImportClients({ user, role, users, existing, live, onClose, onDone, toast }) {
@@ -133,7 +171,8 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
 
   const usersList = users && users.length ? users : (window.P4_USERS || []);
   const existingNames = new Set((existing || []).map((c) => impNorm(c.loja)));
-  const ctx = { isAdmin, users: usersList, selfUser: user, existingNames };
+  const existingById = new Map((existing || []).map((c) => [String(c.id), c]));
+  const ctx = { isAdmin, users: usersList, selfUser: user, existingNames, existingById };
   const hasXLSX = !!window.XLSX;
 
   const handleFile = async (file) => {
@@ -174,18 +213,23 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
   const valids = parsed.filter((p) => p.errors.length === 0);
   const invalids = parsed.filter((p) => p.errors.length > 0);
   const totalMk = valids.reduce((a, p) => a + p.marketplaces.length, 0);
+  const updateN = valids.filter((p) => p.isUpdate).length;
+  const createN = valids.length - updateN;
 
   const runImport = async () => {
     if (!live) { toast('Conecte-se ao servidor para importar.'); return; }
     if (!valids.length) return;
     setStep('importing');
-    let ok = 0; const fails = [];
+    let created = 0; let updated = 0; const fails = [];
     for (let i = 0; i < valids.length; i++) {
-      setProg({ i: i + 1, n: valids.length, loja: valids[i].loja });
-      try { await window.P4_API.createClient(valids[i].payload); ok++; }
-      catch (e) { fails.push({ loja: valids[i].loja, msg: e.message || 'erro ao criar' }); }
+      const v = valids[i];
+      setProg({ i: i + 1, n: valids.length, loja: v.loja });
+      try {
+        if (v.isUpdate) { await window.P4_API.updateClient(v.clienteId, v.payload); updated += 1; }
+        else { await window.P4_API.createClient(v.payload); created += 1; }
+      } catch (e) { fails.push({ loja: v.loja, msg: e.message || 'erro ao salvar' }); }
     }
-    setResult({ ok, fail: fails.length, fails });
+    setResult({ created, updated, fail: fails.length, fails });
     setStep('done');
   };
 
@@ -214,9 +258,9 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
             {!live ? <div style={{ ...errBox, marginTop: 0, marginBottom: 16, background: 'rgba(224,146,47,.12)', borderColor: 'rgba(224,146,47,.35)', color: '#9a6a18' }}>Você está em modo demonstração. Conecte-se ao servidor (faça login) para que a importação salve de verdade.</div> : null}
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Como funciona</div>
             <ol style={{ margin: '0 0 4px 18px', padding: 0, fontSize: 12.8, color: 'var(--muted)', lineHeight: 1.7 }}>
-              <li>Baixe o modelo e preencha <b>uma linha por marketplace</b>.</li>
-              <li>Para um cliente com vários marketplaces, <b>repita o nome da loja</b> em várias linhas.</li>
-              <li>As <b>metas são opcionais</b> — pode deixar em branco.</li>
+              <li><b>Editar em massa:</b> use o <b>Exportar planilha</b>, edite e reimporte aqui — linhas com <b>ID Cliente</b> atualizam o cliente (não duplicam).</li>
+              <li>Para <b>criar novos</b>, baixe o modelo e preencha <b>uma linha por marketplace</b> (deixe o ID Cliente em branco).</li>
+              <li>Cliente com vários marketplaces: <b>repita o nome da loja</b> em várias linhas. <b>Metas são opcionais.</b></li>
               <li>Salve e envie o arquivo (<b>.xlsx</b> ou <b>.csv</b>).</li>
             </ol>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
@@ -230,7 +274,7 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
               <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 10 }}>Colunas aceitas</div>
               <div style={{ fontSize: 12.3, color: 'var(--muted)', lineHeight: 1.7 }}>
-                <b style={{ color: 'var(--ink)' }}>Loja*</b>, <b style={{ color: 'var(--ink)' }}>Analista*</b> (nome ou e-mail do usuário), <b style={{ color: 'var(--ink)' }}>Marketplace*</b> ({IMP_MARKETPLACES.join(', ')}), Tipo (Loja/Marca), Conta, Meta Investimento, Meta ROAS, Meta ACOS, Meta TACOS, Frequência (Semanal/Quinzenal/Mensal), Dia, Observações.
+                <b style={{ color: 'var(--ink)' }}>Loja*</b>, <b style={{ color: 'var(--ink)' }}>Analista*</b> (nome ou e-mail), <b style={{ color: 'var(--ink)' }}>Marketplace*</b> ({IMP_MARKETPLACES.join(', ')}), Tipo (Loja/Marca), Conta, Meta Investimento/ROAS/ACOS/TACOS, Data entrada, Data encerramento, Status (Ativo/Encerrado), Frequência (Semanal/Quinzenal/Mensal), Dia, Observações. <b style={{ color: 'var(--ink)' }}>ID Cliente</b>/<b style={{ color: 'var(--ink)' }}>ID Conta</b> vêm da exportação — não preencha à mão.
                 <div style={{ marginTop: 6 }}>* obrigatórios{!isAdmin ? ' — como analista, todos os clientes serão atribuídos a você (a coluna Analista é ignorada).' : '.'}</div>
               </div>
             </div>
@@ -241,7 +285,9 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
           <>
             <div style={{ ...body, flex: 1 }}>
               <div style={{ fontSize: 13, marginBottom: 14 }}>
-                <b style={{ color: 'var(--green-ink)' }}>{valids.length}</b> {valids.length === 1 ? 'cliente pronto' : 'clientes prontos'} ({totalMk} {totalMk === 1 ? 'marketplace' : 'marketplaces'})
+                <b style={{ color: 'var(--green-ink)' }}>{valids.length}</b> {valids.length === 1 ? 'cliente pronto' : 'clientes prontos'}
+                {updateN ? <> · <b style={{ color: '#2a6fdb' }}>{updateN}</b> p/ atualizar</> : null}
+                {createN ? <> · <b>{createN}</b> novo{createN === 1 ? '' : 's'}</> : null}
                 {invalids.length ? <> · <b style={{ color: 'var(--red)' }}>{invalids.length}</b> com erro (serão ignorados)</> : null}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -251,6 +297,7 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
                     <div key={i} style={{ border: '1px solid var(--line)', borderLeft: `3px solid ${bad ? 'var(--red)' : p.warnings.length ? 'var(--amber)' : 'var(--green)'}`, borderRadius: 10, padding: '11px 13px', background: bad ? 'rgba(216,66,58,.04)' : 'transparent' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                         <b style={{ fontSize: 13.5 }}>{p.loja}</b>
+                        {!bad ? <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 6, alignSelf: 'center', background: p.isUpdate ? 'rgba(42,111,219,.14)' : 'rgba(86,213,79,.16)', color: p.isUpdate ? '#2a6fdb' : 'var(--green-ink)' }}>{p.isUpdate ? 'Atualizar' : 'Novo'}</span> : null}
                         <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{p.tipo}{p.analistaNome ? ` · ${p.analistaNome}` : ''}</span>
                         {!bad ? <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--muted)' }}>{p.marketplaces.join(' · ')}</span> : null}
                       </div>
@@ -264,7 +311,7 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '14px 22px', borderTop: '1px solid var(--line)', flex: 'none' }}>
               <button className="btn-line" onClick={() => { setStep('upload'); setParsed([]); setErr(''); }}>Voltar</button>
               <button className="btn-accent" onClick={runImport} disabled={!valids.length || !live} style={(!valids.length || !live) ? { opacity: .5, cursor: 'not-allowed' } : null}>
-                Importar {valids.length} {valids.length === 1 ? 'cliente' : 'clientes'}
+                Aplicar em {valids.length} {valids.length === 1 ? 'cliente' : 'clientes'}
               </button>
             </div>
           </>
@@ -285,12 +332,17 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
             <div style={body}>
               <div style={{ textAlign: 'center', padding: '8px 0 18px' }}>
                 <div style={{ fontSize: 32 }}>{result.fail ? '⚠️' : '✅'}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}><b style={{ color: 'var(--green-ink)' }}>{result.ok}</b> {result.ok === 1 ? 'cliente criado' : 'clientes criados'}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
+                  {result.updated ? <><b style={{ color: '#2a6fdb' }}>{result.updated}</b> atualizado{result.updated === 1 ? '' : 's'}</> : null}
+                  {result.updated && result.created ? ' · ' : null}
+                  {result.created ? <><b style={{ color: 'var(--green-ink)' }}>{result.created}</b> criado{result.created === 1 ? '' : 's'}</> : null}
+                  {!result.updated && !result.created ? 'Nada aplicado' : null}
+                </div>
                 {result.fail ? <div style={{ fontSize: 13, color: 'var(--red)', marginTop: 4 }}>{result.fail} {result.fail === 1 ? 'falhou' : 'falharam'}</div> : null}
               </div>
               {result.fails.length ? (
                 <div style={{ marginTop: 4 }}>
-                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Não criados</div>
+                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Não aplicados</div>
                   {result.fails.map((f, i) => <div key={i} style={{ fontSize: 12.3, marginBottom: 5 }}><b>{f.loja}</b> <span style={{ color: 'var(--red)' }}>— {f.msg}</span></div>)}
                 </div>
               ) : null}
