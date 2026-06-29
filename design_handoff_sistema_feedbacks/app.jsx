@@ -956,15 +956,19 @@ function App() {
           <Section title="Resultados do período" collapsible note="▲ pos · – neutro · ▼ neg">
             {canPullMeli ? (
               <div style={{ marginBottom: 14 }}>
-                <button type="button" className="btn-meli" onClick={pullFromMeli} disabled={mlBusy}>
-                  {mlBusy ? <span className="ml-spin"></span> : <span className="ml-badge">ML</span>}
-                  {mlBusy ? 'Buscando dados…' : 'Puxar do Mercado Livre'}
-                  {!mlBusy ? (
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2D3277" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v10" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></svg>
-                  ) : null}
-                </button>
+                <div className="ml-row">
+                  <button type="button" className="btn-meli" onClick={pullFromMeli} disabled={mlBusy}>
+                    {mlBusy ? <span className="ml-spin"></span> : <span className="ml-badge">ML</span>}
+                    {mlBusy ? 'Buscando dados…' : 'Puxar do Mercado Livre'}
+                    {!mlBusy ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D3277" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v10" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></svg>
+                    ) : null}
+                  </button>
+                  <span className="ml-help" tabIndex={0} role="button" aria-label="O que este botão faz?">?
+                    <span className="ml-help-pop"><span className="ml-help-card">Preenche os dados de <b>Ads</b> (investimento, receita e vendas de Ads). <b>Faturamento</b> e <b>Vendas totais</b>: copie da <a href="https://www.mercadolivre.com.br/metricas" target="_blank" rel="noopener">página de Métricas</a> do Mercado Livre.</span></span>
+                  </span>
+                </div>
                 {mlMsg ? <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: mlMsg.err ? '#ff8b83' : '#7be36f' }}>{mlMsg.t}</div> : null}
-                <div className="ml-hint">Preenche os dados de <b>Ads</b> (investimento, receita e vendas de Ads). <b>Faturamento</b> e <b>Vendas totais</b>: copie da <a href="https://www.mercadolivre.com.br/metricas" target="_blank" rel="noopener">página de Métricas</a> do Mercado Livre.</div>
               </div>
             ) : null}
             <div className="row2">
