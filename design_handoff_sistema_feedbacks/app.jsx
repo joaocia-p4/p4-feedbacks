@@ -705,6 +705,8 @@ function App() {
   const [link, setLink] = useState(() => bootRef.current.link);
   const [mlBusy, setMlBusy] = useState(false);
   const [mlMsg, setMlMsg] = useState(null);
+  const [campBusy, setCampBusy] = useState(false);
+  const [campMsg, setCampMsg] = useState(null);
   const [savingApi, setSavingApi] = useState(false);
   const [apiMsg, setApiMsg] = useState(null);
   // keep comparison periods ordered by date automatically (most recent first)
@@ -855,6 +857,37 @@ function App() {
       setMlBusy(false);
     }
   };
+  // Puxa as campanhas de Product Ads do período e adiciona um resumo das ATIVAS
+  // às observações (estado atual — a API não tem histórico de alterações).
+  const pullCampaigns = async () => {
+    if (!d.periodoIni || !d.periodoFim) { setCampMsg({ err: true, t: 'Defina o início e o fim do período primeiro.' }); return; }
+    setCampBusy(true); setCampMsg(null);
+    try {
+      const r = await window.P4_API.meliCampaigns(link.accId, d.periodoIni, d.periodoFim);
+      if (!r || r.ok === false) { setCampMsg({ err: true, t: 'Não foi possível buscar as campanhas — confira o acesso de Publicidade do app no Mercado Livre.' }); return; }
+      const all = r.campanhas || [];
+      const active = all.filter((c) => { const s = String(c.status || '').toLowerCase(); return !s || s === 'active' || s === 'enabled' || s === 'ativo'; });
+      const paused = all.length - active.length;
+      if (!active.length) { setCampMsg({ err: false, t: `Nenhuma campanha ativa no período${all.length ? ` (${all.length} no total)` : ''}.` }); return; }
+      const money = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pctf = (v) => (v == null ? '—' : Number(v).toFixed(1).replace('.', ',') + '%');
+      const lines = active.map((c) => {
+        const parts = [];
+        if (c.orcamento != null) parts.push(`orç. ${money(c.orcamento)}`);
+        if (c.acosAlvo != null) parts.push(`ACOS alvo ${pctf(c.acosAlvo)}`);
+        parts.push(`invest. ${money(c.investimento)}`);
+        if (c.acos != null) parts.push(`ACOS ${pctf(c.acos)}`);
+        return `• ${c.nome} — ${parts.join(' · ')}`;
+      });
+      const header = `Campanhas ativas (${brShort(d.periodoIni)}–${brShort(d.periodoFim)}): ${active.length}${paused ? ` · ${paused} pausada(s)` : ''}`;
+      const block = header + '\n' + lines.join('\n');
+      setD((p) => ({ ...p, obs: (p.obs && p.obs.trim()) ? (p.obs.trim() + '\n\n' + block) : block }));
+      setCampMsg({ err: false, t: `${active.length} campanha(s) ativa(s) adicionada(s) às observações.` });
+    } catch (e) {
+      setCampMsg({ err: true, t: (e && e.message) || 'Falha ao buscar campanhas do Mercado Livre.' });
+    } finally { setCampBusy(false); }
+  };
+
   const saveToSystem = async () => {
     if (!link || !window.P4_API) return;
     setSavingApi(true); setApiMsg(null);
@@ -995,6 +1028,16 @@ function App() {
               <span className="ml-help-pop"><span className="ml-help-card">Cole (Ctrl/Cmd+V) um print nas <b>Notas</b> ou na galeria, ou clique em <b>+ Adicionar print</b> para enviar do computador.</span></span>
             </span>
           }>
+            {canPullMeli ? (
+              <div style={{ marginBottom: 12 }}>
+                <button type="button" onClick={pullCampaigns} disabled={campBusy}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid var(--panel-line)', background: 'transparent', color: 'var(--panel-txt)', fontFamily: "'Sora'", fontWeight: 600, fontSize: 12.5, padding: '8px 13px', borderRadius: 9, cursor: campBusy ? 'wait' : 'pointer', opacity: campBusy ? 0.6 : 1 }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 5, background: '#FFE600', color: '#2D3277', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 8.5, flex: 'none' }}>ML</span>
+                  {campBusy ? 'Buscando campanhas…' : 'Puxar campanhas ativas'}
+                </button>
+                {campMsg ? <div style={{ fontSize: 11.5, marginTop: 7, fontWeight: 600, color: campMsg.err ? '#ff8b83' : '#7be36f' }}>{campMsg.t}</div> : null}
+              </div>
+            ) : null}
             <Field label="Notas do período" hint="opcional" value={d.obs} onChange={set('obs')} placeholder="Destaques, alertas, próximos passos…" area wide onPaste={onObsPaste} />
             <ObsImages images={d.obsImages || []} onAdd={addImages} onRemove={removeImage} />
           </Section>

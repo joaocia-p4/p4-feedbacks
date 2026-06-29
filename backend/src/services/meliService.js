@@ -340,11 +340,58 @@ async function reputation(accountId) {
   };
 }
 
+// Lista as campanhas de Product Ads do período (nome, status, orçamento, ACOS alvo
+// e métricas). Serve para registrar nas observações quais campanhas estão ativas.
+// Obs.: a API pública do ML não expõe um histórico de alterações das campanhas —
+// só o estado atual; comparar "o que mudou" exige guardar snapshots ao longo do tempo.
+async function campaigns(accountId, from, to) {
+  const me = await apiGet(accountId, '/users/me');
+  const siteId = (me.ok && me.data.site_id) || 'MLB';
+  const adv = await apiGet(accountId, '/advertising/advertisers?product_id=PADS', { headers: { 'Api-Version': '1' } });
+  const list = (adv.ok && adv.data.advertisers) || [];
+  const advertiser = list.find((a) => a.site_id === siteId) || list[0];
+  if (!advertiser) return { ok: false, erro: adv.ok ? 'nenhum advertiser de Product Ads' : adv.data, campanhas: [] };
+  const out = [];
+  let offset = 0;
+  for (let i = 0; i < 20 && offset < 1000; i++) {
+    const q =
+      `/marketplace/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}` +
+      `/product_ads/campaigns/search?limit=50&offset=${offset}` +
+      `&date_from=${from}&date_to=${to}` +
+      `&metrics=cost,total_amount,units_quantity,clicks,prints`;
+    const r = await apiGet(accountId, q, { headers: { 'Api-Version': '1' } });
+    if (!r.ok) return { ok: false, erro: r.data, campanhas: out };
+    const results = r.data.results || [];
+    for (const c of results) {
+      const m = c.metrics || {};
+      const cost = m.cost || 0;
+      const rec = m.total_amount || 0;
+      out.push({
+        id: c.id,
+        nome: c.name || c.campaign_name || `Campanha ${c.id}`,
+        status: c.status || null,
+        orcamento: c.budget != null ? c.budget : (c.daily_budget != null ? c.daily_budget : null),
+        acosAlvo: c.acos_target != null ? c.acos_target : (c.target_acos != null ? c.target_acos : null),
+        estrategia: c.strategy || null,
+        investimento: cost,
+        receitaAds: rec,
+        acos: rec > 0 ? +((cost / rec) * 100).toFixed(1) : null,
+        unidades: m.units_quantity || 0,
+      });
+    }
+    const total = r.data.paging ? r.data.paging.total : results.length;
+    offset += 50;
+    if (offset >= total || results.length === 0) break;
+  }
+  return { ok: true, campanhas: out };
+}
+
 module.exports = {
   isConfigured,
   pkcePair,
   reportData,
   reputation,
+  campaigns,
   signState,
   verifyState,
   signLink,

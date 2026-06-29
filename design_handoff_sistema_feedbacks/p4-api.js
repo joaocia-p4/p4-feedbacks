@@ -91,6 +91,7 @@
   async function meliExplore(accId, path) { return apiFetch('/integrations/mercadolivre/explore' + qs({ accountId: accId, path })); }
   async function meliReportData(accId, from, to) { return apiFetch('/integrations/mercadolivre/report-data' + qs({ accountId: accId, from, to })); }
   async function meliReputation(accId) { return apiFetch('/integrations/mercadolivre/reputation' + qs({ accountId: accId })); }
+  async function meliCampaigns(accId, from, to) { return apiFetch('/integrations/mercadolivre/campaigns' + qs({ accountId: accId, from, to })); }
 
   function isLogged() { return !!token(); }
 
@@ -112,6 +113,6 @@
     listClients, getClient, createClient, updateClient, deleteClient,
     listReports, createReport, deleteReport,
     getDashboard,
-    meliStatus, meliConnect, meliConnectLink, meliDisconnect, meliProbe, meliExplore, meliReportData, meliReputation,
+    meliStatus, meliConnect, meliConnectLink, meliDisconnect, meliProbe, meliExplore, meliReportData, meliReputation, meliCampaigns,
   };
 })();
