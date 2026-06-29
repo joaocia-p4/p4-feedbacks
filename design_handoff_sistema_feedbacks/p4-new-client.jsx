@@ -130,7 +130,8 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   const I = window.Icons;
   const editing = !!client;
   const ALL = window.P4_AD_MARKETPLACES || [];
-  const analistas = (users || window.P4_USERS || []).filter((u) => u.papel === 'analista');
+  // admins também podem ser responsáveis por clientes (CS é só leitura, fica de fora)
+  const analistas = (users || window.P4_USERS || []).filter((u) => u.papel === 'analista' || u.papel === 'admin');
   const metaStr = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : (v || ''));
   const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '20,00', metaRoas: '4,00', metaAcos: '20,00', metaTacos: '15,00', dataEntrada: '', dataEncerramento: '', ativo: true });
 
@@ -210,7 +211,7 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
                   <div className={'lf-in is-select' + (touched && !analista ? ' err' : '')}>
                     <select value={analista} onChange={(e) => setAnalista(e.target.value)} disabled={role === 'analista'}>
                       <option value="">Selecione…</option>
-                      {analistas.map((a) => <option key={a.id} value={a.nome}>{a.nome}</option>)}
+                      {analistas.map((a) => <option key={a.id} value={a.nome}>{a.nome}{a.papel === 'admin' ? ' (admin)' : ''}</option>)}
                     </select>
                     <span className="sel-caret">▾</span>
                   </div>
