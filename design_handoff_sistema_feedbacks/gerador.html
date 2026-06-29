@@ -210,6 +210,24 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
 }
 .btn-primary:hover{filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 7px 22px rgba(86,213,79,.4)}
 
+/* botão "Puxar do Mercado Livre" (no painel escuro) */
+.btn-meli{
+  appearance:none;cursor:pointer;display:inline-flex;align-items:center;gap:9px;border:0;
+  background:linear-gradient(180deg,#FFE600,#FFD400);color:#2D3277;
+  font-family:'Sora';font-weight:700;font-size:13px;padding:9px 14px 9px 9px;border-radius:11px;
+  box-shadow:0 6px 18px -6px rgba(255,214,0,.55),inset 0 1px 0 rgba(255,255,255,.5);transition:.15s;
+}
+.btn-meli:hover:not(:disabled){filter:brightness(1.03);transform:translateY(-1px);box-shadow:0 10px 26px -6px rgba(255,214,0,.6),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-meli:active:not(:disabled){transform:translateY(0)}
+.btn-meli:disabled{cursor:wait;opacity:.7}
+.btn-meli svg{flex:none}
+.btn-meli .ml-badge{flex:none;width:24px;height:24px;border-radius:7px;background:#2D3277;color:#FFE600;display:grid;place-items:center;font-weight:800;font-size:10.5px;letter-spacing:.02em}
+.btn-meli .ml-spin{flex:none;width:16px;height:16px;border:2px solid rgba(45,50,119,.35);border-top-color:#2D3277;border-radius:50%;animation:mlspin .7s linear infinite}
+@keyframes mlspin{to{transform:rotate(360deg)}}
+.ml-hint{font-size:10.5px;color:var(--panel-mut);margin-top:8px;line-height:1.55;max-width:330px}
+.ml-hint a{color:var(--panel-txt);text-decoration:underline}
+.ml-hint b{color:var(--panel-txt);font-weight:700}
+
 /* ============ STAGE ============ */
 .stage{flex:1;height:100vh;position:relative;display:flex;flex-direction:column;overflow:hidden;
   background:
