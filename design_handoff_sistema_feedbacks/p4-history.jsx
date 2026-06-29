@@ -438,6 +438,86 @@ function MetricsExplorer({ reports }) {
   );
 }
 
+// Painel de reputação do vendedor no Mercado Livre (cor/termômetro, nível,
+// cancelamentos, reclamações, envios atrasados, vendas concluídas).
+function MeliReputation({ conta }) {
+  const live = !!(window.P4_API && window.P4_API.isLogged());
+  const [st, setSt] = React.useState({ loading: true, rep: null, err: '' });
+  React.useEffect(() => {
+    if (!live || !conta || !conta.id) { setSt({ loading: false, rep: null, err: 'offline' }); return; }
+    let cancel = false;
+    setSt({ loading: true, rep: null, err: '' });
+    window.P4_API.meliReputation(conta.id)
+      .then((d) => { if (!cancel) setSt({ loading: false, rep: (d && d.ok) ? d : null, err: (d && d.ok) ? '' : 'apierr' }); })
+      .catch((e) => { if (!cancel) setSt({ loading: false, rep: null, err: (e && e.status === 400) ? 'notconnected' : 'err' }); });
+    return () => { cancel = true; };
+  }, [live, conta && conta.id]);
+
+  if (!live) return null;
+
+  const pct = (rate) => (rate == null ? '—' : (rate * 100).toFixed(1).replace('.', ',') + '%');
+  const card = { background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 14, padding: '16px 18px', marginBottom: 18 };
+  const head = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 13 }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}><path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3Z" /></svg>
+      <b style={{ fontSize: 13.5 }}>Reputação · Mercado Livre</b>
+    </div>
+  );
+  const note = (txt) => <div className="dash-no-break" style={card}>{head}<span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{txt}</span></div>;
+
+  if (st.loading) return note('Carregando reputação…');
+  if (st.err === 'notconnected') return note('Conta não conectada ao Mercado Livre — conecte na edição do cliente para ver a reputação.');
+  if (!st.rep) return note('Não foi possível carregar a reputação agora.');
+
+  const r = st.rep;
+  const m = r.metrics;
+  const medals = { platinum: 'MercadoLíder Platinum', gold: 'MercadoLíder Gold', silver: 'MercadoLíder' };
+  const tiles = [
+    { k: 'Vendas concluídas', v: (m.sales.completed || 0).toLocaleString('pt-BR'), c: 'var(--ink)' },
+    { k: 'Cancelamentos', v: pct(m.cancellations.rate), c: m.cancellations.rate > 0.02 ? 'var(--red)' : 'var(--ink)' },
+    { k: 'Reclamações', v: pct(m.claims.rate), c: m.claims.rate > 0.02 ? 'var(--red)' : 'var(--ink)' },
+    { k: 'Envios atrasados', v: pct(m.delayedHandling.rate), c: m.delayedHandling.rate > 0.15 ? 'var(--red)' : 'var(--ink)' },
+  ];
+  const rt = r.transactions.ratings || {};
+  const hasRatings = !!(rt.positive || rt.neutral || rt.negative);
+
+  return (
+    <div className="dash-no-break" style={card}>
+      {head}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14 }}>
+        <span style={{ width: 15, height: 30, borderRadius: 5, background: r.colorHex, flex: 'none', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.18)' }}></span>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.1 }}>{r.colorLabel}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{medals[r.powerSeller] || 'Sem medalha'}{r.nickname ? ` · ${r.nickname}` : ''}</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+        {tiles.map((t, i) => (
+          <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 5 }}>{t.k}</div>
+            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 18, fontWeight: 700, color: t.c }}>{t.v}</div>
+          </div>
+        ))}
+      </div>
+      {hasRatings ? (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5 }}>Qualificações dos compradores</div>
+          <div style={{ display: 'flex', height: 9, borderRadius: 6, overflow: 'hidden', background: 'var(--line)' }}>
+            <div title={'Positivas: ' + pct(rt.positive)} style={{ width: ((rt.positive || 0) * 100) + '%', background: '#00a650' }}></div>
+            <div title={'Neutras: ' + pct(rt.neutral)} style={{ width: ((rt.neutral || 0) * 100) + '%', background: '#c9b04a' }}></div>
+            <div title={'Negativas: ' + pct(rt.negative)} style={{ width: ((rt.negative || 0) * 100) + '%', background: '#e53935' }}></div>
+          </div>
+          <div style={{ display: 'flex', gap: 14, marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
+            <span><b style={{ color: '#00a650' }}>●</b> {pct(rt.positive)} pos.</span>
+            <span><b style={{ color: '#c9b04a' }}>●</b> {pct(rt.neutral)} neu.</span>
+            <span><b style={{ color: '#e53935' }}>●</b> {pct(rt.negative)} neg.</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, generatorHref, onRefresh, toast }) {
   const I = window.Icons;
   const c = client;
@@ -683,6 +763,8 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
               <div className="trend" style={{ color: 'var(--muted)' }}>{reports.length} períodos</div>
             </div>
           </div>
+
+          {conta.marketplace === 'Mercado Livre' ? <MeliReputation conta={conta} /> : null}
 
           <MetricsExplorer reports={reports} conta={conta} />
 

@@ -228,10 +228,54 @@ async function reportData(accountId, from, to) {
   };
 }
 
+// Reputação do vendedor: termômetro (cor), nível/MercadoLíder, % cancelamentos,
+// % reclamações, % envios atrasados e vendas concluídas. Vem de /users/me
+// (campo seller_reputation), reusando a conexão já existente.
+const REP_LEVELS = {
+  '5_green': { label: 'Verde', hex: '#00a650' },
+  '4_light_green': { label: 'Verde claro', hex: '#7dd956' },
+  '3_yellow': { label: 'Amarelo', hex: '#ffe600' },
+  '2_orange': { label: 'Laranja', hex: '#ff7733' },
+  '1_red': { label: 'Vermelho', hex: '#e53935' },
+};
+async function reputation(accountId) {
+  const me = await apiGet(accountId, '/users/me');
+  if (!me.ok) return { ok: false, status: me.status, data: me.data };
+  const d = me.data || {};
+  const rep = d.seller_reputation || {};
+  const m = rep.metrics || {};
+  const tx = rep.transactions || {};
+  const lvl = REP_LEVELS[rep.level_id] || { label: '—', hex: '#9aa39d' };
+  const metric = (x) => ({ rate: (x && x.rate) || 0, value: (x && x.value) || 0, period: (x && x.period) || null });
+  return {
+    ok: true,
+    sellerId: d.id,
+    nickname: d.nickname,
+    site: d.site_id,
+    levelId: rep.level_id || null,
+    colorLabel: lvl.label,
+    colorHex: lvl.hex,
+    powerSeller: rep.power_seller_status || null,
+    transactions: {
+      total: tx.total || 0,
+      completed: tx.completed || 0,
+      canceled: tx.canceled || 0,
+      ratings: tx.ratings || { positive: 0, neutral: 0, negative: 0 },
+    },
+    metrics: {
+      sales: { completed: (m.sales && m.sales.completed) || 0, period: (m.sales && m.sales.period) || null },
+      cancellations: metric(m.cancellations),
+      claims: metric(m.claims),
+      delayedHandling: metric(m.delayed_handling_time),
+    },
+  };
+}
+
 module.exports = {
   isConfigured,
   pkcePair,
   reportData,
+  reputation,
   signState,
   verifyState,
   signLink,

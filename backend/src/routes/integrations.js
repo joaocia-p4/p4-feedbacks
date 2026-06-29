@@ -188,6 +188,19 @@ router.get(
   })
 );
 
+// Reputação do vendedor (cor/termômetro, nível, cancelamentos, reclamações,
+// envios atrasados, vendas concluídas). Leitura — analista também vê.
+router.get(
+  '/mercadolivre/reputation',
+  asyncHandler(async (req, res) => {
+    await clientService.getAccountForRead(accId(req), req.user);
+    const conn = await meli.getConnection(accId(req));
+    if (!conn) throw badRequest('Conta não conectada ao Mercado Livre.');
+    const rep = await meli.reputation(accId(req));
+    res.json(rep);
+  })
+);
+
 // Desconectar (remove os tokens).
 router.delete(
   '/mercadolivre/connection',
