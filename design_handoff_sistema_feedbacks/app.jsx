@@ -536,7 +536,6 @@ function ObsImages({ images, onAdd, onRemove }) {
       </div>
       <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
         onChange={(e) => { onAdd(e.target.files); e.target.value = ''; }} />
-      <p className="obs-imgs-hint">Cole (Ctrl/Cmd+V) um print no campo acima ou clique para enviar.</p>
     </div>
   );
 }
@@ -991,7 +990,11 @@ function App() {
             </div>
           </Section>
 
-          <Section title="Observações" collapsible summary={obsSummary}>
+          <Section title="Observações" collapsible summary={obsSummary} note={
+            <span className="ml-help right-open" tabIndex={0} role="button" aria-label="Como anexar prints" onClick={(e) => e.stopPropagation()}>?
+              <span className="ml-help-pop"><span className="ml-help-card">Cole (Ctrl/Cmd+V) um print nas <b>Notas</b> ou na galeria, ou clique em <b>+ Adicionar print</b> para enviar do computador.</span></span>
+            </span>
+          }>
             <Field label="Notas do período" hint="opcional" value={d.obs} onChange={set('obs')} placeholder="Destaques, alertas, próximos passos…" area wide onPaste={onObsPaste} />
             <ObsImages images={d.obsImages || []} onAdd={addImages} onRemove={removeImage} />
           </Section>
