@@ -842,14 +842,14 @@ function App() {
         vendasAds: int(r.vendasAds),
         investimento: money(r.investimento),
       }));
+      // sem mensagem de sucesso (os campos já mostram o resultado); só avisa se algo falhou
       const adsErr = r.ads && r.ads.erro;
       const ordErr = r.ordersErro;
-      setMlMsg({
-        err: false,
-        t: `Puxado (bruto): faturamento R$ ${money(r.faturamento)} · ${int(r.vendas)} venda(s) · Ads R$ ${money(r.investimento)} de investimento.`
-          + (ordErr ? ' ⚠ Pedidos podem estar incompletos — confira o faturamento.' : '')
-          + (adsErr ? ' ⚠ Ads não retornou — confira o acesso de Publicidade do app.' : ''),
-      });
+      const warn = [
+        ordErr ? 'Pedidos podem estar incompletos — confira o faturamento.' : '',
+        adsErr ? 'Ads não retornou — confira o acesso de Publicidade do app.' : '',
+      ].filter(Boolean).join(' ');
+      setMlMsg(warn ? { err: true, t: '⚠ ' + warn } : null);
     } catch (e) {
       setMlMsg({ err: true, t: e.message || 'Falha ao buscar dados do Mercado Livre' });
     } finally {
