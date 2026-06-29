@@ -935,15 +935,16 @@ function App() {
         </div>
 
         <div className="panel-body" ref={bodyRef} onKeyDown={onFlowKey}>
-          <Section title="Identificação" collapsible>
+          <Section title="Identificação" collapsible note={
+            <span className="ml-help right-open" tabIndex={0} role="button" aria-label="Como funciona a identificação" onClick={(e) => e.stopPropagation()}>?
+              <span className="ml-help-pop"><span className="ml-help-card">Marketplace, cliente e metas vêm do <b>cadastro do cliente</b> · <b>semanal</b> · ROAS/ACOS/TACOS <b>automáticos</b>.</span></span>
+            </span>
+          }>
             <div className="row2">
               <StaticField label="Marketplace" value={d.marketplace || '—'} />
               <StaticField label="Loja / Cliente" value={d.loja || '—'} />
             </div>
             <StaticField label="Preparado por" value={d.analista || '—'} wide />
-            <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '2px 2px 0' }}>
-              Marketplace, cliente e metas vêm do cadastro do cliente · semanal · ROAS/ACOS/TACOS automáticos.
-            </p>
           </Section>
 
           <Section title="Período" collapsible note={periodDays ? `${brShort(d.periodoIni)} – ${brShort(d.periodoFim)} · ${periodDays} dia${periodDays > 1 ? 's' : ''}` : ''}>

@@ -233,6 +233,9 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
 .ml-help-card::before{content:"";position:absolute;top:-5px;right:12px;width:9px;height:9px;background:var(--panel-2);border-left:1px solid var(--panel-line);border-top:1px solid var(--panel-line);transform:rotate(45deg)}
 .ml-help-card a{color:var(--accent);text-decoration:underline;font-weight:600}
 .ml-help-card b{color:var(--panel-txt);font-weight:700}
+/* variante que abre para a DIREITA (quando o "?" fica perto da borda esquerda) */
+.ml-help.right-open .ml-help-pop{left:-8px;right:auto}
+.ml-help.right-open .ml-help-card::before{left:14px;right:auto}
 
 /* ============ STAGE ============ */
 .stage{flex:1;height:100vh;position:relative;display:flex;flex-direction:column;overflow:hidden;
