@@ -836,16 +836,19 @@ function App() {
       const int = (n) => String(Math.round(Number(n) || 0));
       setD((p) => ({
         ...p,
+        faturamento: money(r.faturamento),
+        vendas: int(r.vendas),
         receitaAds: money(r.receitaAds),
         vendasAds: int(r.vendasAds),
         investimento: money(r.investimento),
       }));
       const adsErr = r.ads && r.ads.erro;
+      const ordErr = r.ordersErro;
       setMlMsg({
         err: false,
-        t: adsErr
-          ? '⚠ Ads não retornou — confira o acesso de Publicidade do app no Mercado Livre.'
-          : `Ads preenchidos: investimento R$ ${money(r.investimento)} · receita R$ ${money(r.receitaAds)} · ${r.ads.campanhas} campanha(s). Agora cole Faturamento e Vendas da página de Métricas do ML.`,
+        t: `Puxado (bruto): faturamento R$ ${money(r.faturamento)} · ${int(r.vendas)} venda(s) · Ads R$ ${money(r.investimento)} de investimento.`
+          + (ordErr ? ' ⚠ Pedidos podem estar incompletos — confira o faturamento.' : '')
+          + (adsErr ? ' ⚠ Ads não retornou — confira o acesso de Publicidade do app.' : ''),
       });
     } catch (e) {
       setMlMsg({ err: true, t: e.message || 'Falha ao buscar dados do Mercado Livre' });
@@ -966,7 +969,7 @@ function App() {
                     ) : null}
                   </button>
                   <span className="ml-help" tabIndex={0} role="button" aria-label="O que este botão faz?">?
-                    <span className="ml-help-pop"><span className="ml-help-card">Preenche os dados de <b>Ads</b> (investimento, receita e vendas de Ads). <b>Faturamento</b> e <b>Vendas totais</b>: copie da <a href="https://www.mercadolivre.com.br/metricas" target="_blank" rel="noopener">página de Métricas</a> do Mercado Livre.</span></span>
+                    <span className="ml-help-pop"><span className="ml-help-card">Puxa do Mercado Livre o <b>faturamento</b> e as <b>vendas brutas</b> do período (via Pedidos) e os dados de <b>Ads</b> (investimento, receita e vendas de Ads). Valores <b>brutos</b> (sem descontar cancelamentos/devoluções) — compare com a <a href="https://www.mercadolivre.com.br/metricas" target="_blank" rel="noopener">página de Métricas</a> e ajuste à mão se precisar.</span></span>
                   </span>
                 </div>
                 {mlMsg ? <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: mlMsg.err ? '#ff8b83' : '#7be36f' }}>{mlMsg.t}</div> : null}

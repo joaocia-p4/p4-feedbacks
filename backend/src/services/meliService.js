@@ -168,14 +168,79 @@ async function apiGet(accountId, path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// Junta os dados de Publicidade (Product Ads) de um período (YYYY-MM-DD) para
-// preencher o relatório: investimento, receita e vendas de Ads (somando todas as
-// campanhas). Faturamento/Vendas totais NÃO vêm daqui — o painel "Métricas" do ML
-// usa um agregado interno não reproduzível pela API pública; esses 2 ficam manuais.
+// Lista de datas YYYY-MM-DD de `from` até `to` (inclusive). Itera ao meio-dia UTC
+// para não escorregar de dia por fuso/DST.
+function dateList(from, to) {
+  const out = [];
+  const cur = new Date(from + 'T12:00:00Z');
+  const end = new Date(to + 'T12:00:00Z').getTime();
+  let guard = 0;
+  while (cur.getTime() <= end && guard < 400) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    guard += 1;
+  }
+  return out;
+}
+
+// Faturamento + vendas BRUTAS do período via API de Pedidos. Vai dia a dia (o
+// offset do /orders/search trava em 1000) e soma TODOS os pedidos criados no dia,
+// sem filtrar status (bruto, sem descontar cancelamentos/devoluções). Fuso -03:00.
+// faturamento = Σ total_amount · vendas = Σ unidades dos itens.
+async function ordersTotals(accountId, sellerId, from, to) {
+  let faturamento = 0;
+  let vendas = 0;
+  let pedidos = 0;
+  let erro = null;
+  for (const day of dateList(from, to)) {
+    let offset = 0;
+    for (let i = 0; i < 25 && offset < 1000; i++) {
+      const q =
+        `/orders/search?seller=${encodeURIComponent(sellerId)}` +
+        `&order.date_created.from=${encodeURIComponent(day + 'T00:00:00.000-03:00')}` +
+        `&order.date_created.to=${encodeURIComponent(day + 'T23:59:59.999-03:00')}` +
+        `&sort=date_desc&limit=50&offset=${offset}`;
+      const r = await apiGet(accountId, q);
+      if (!r.ok) { erro = r.data; break; }
+      const results = r.data.results || [];
+      for (const o of results) {
+        faturamento += o.total_amount || 0;
+        vendas += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
+      }
+      pedidos += results.length;
+      const total = r.data.paging ? r.data.paging.total : results.length;
+      offset += 50;
+      if (offset >= total || results.length === 0) break;
+    }
+    if (erro) break;
+  }
+  return { faturamento, vendas, pedidos, erro };
+}
+
+// Junta os dados do período (YYYY-MM-DD) para preencher o relatório:
+//  - Faturamento e vendas BRUTAS (Pedidos, sem descontar cancelamentos/devoluções);
+//  - Ads (investimento, receita e vendas de Ads, somando as campanhas).
+// O painel "Métricas" do ML usa um agregado interno que pode divergir um pouco do
+// bruto via Pedidos; os campos ficam editáveis para ajuste manual.
 async function reportData(accountId, from, to) {
   const me = await apiGet(accountId, '/users/me');
   const sellerId = me.ok ? me.data.id : null;
   const siteId = (me.ok && me.data.site_id) || 'MLB';
+
+  // ── Faturamento + vendas brutas (Pedidos, dia a dia) ──
+  let faturamento = 0;
+  let vendas = 0;
+  let pedidos = 0;
+  let ordersErro = null;
+  if (sellerId) {
+    const ot = await ordersTotals(accountId, sellerId, from, to);
+    faturamento = ot.faturamento;
+    vendas = ot.vendas;
+    pedidos = ot.pedidos;
+    ordersErro = ot.erro;
+  } else {
+    ordersErro = me.data;
+  }
 
   // ── Anúncios (Product Ads), somando as campanhas ──
   let investimento = 0;
@@ -221,6 +286,10 @@ async function reportData(accountId, from, to) {
   return {
     periodo: { from, to },
     vendedor: { id: sellerId, site: siteId, nickname: me.ok ? me.data.nickname : null },
+    faturamento,
+    vendas,
+    pedidos,
+    ordersErro,
     investimento,
     receitaAds,
     vendasAds,
