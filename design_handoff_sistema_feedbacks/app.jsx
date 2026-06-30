@@ -908,7 +908,28 @@ function App() {
           investimento: x.investimento != null && x.investimento !== '' ? (typeof x.investimento === 'number' ? numStr(x.investimento) : String(x.investimento)) : '',
         })),
       };
-      setD((p) => ({ ...p, campanhas: novas, campanhasMeta: meta }));
+      // Comparativo em texto p/ as Observações: campanhas novas + alterações de
+      // ROAS objetivo/orçamento. Substitui o bloco gerado anteriormente (sem
+      // duplicar) e preserva as notas manuais que o analista escreveu.
+      let obsBlock = '';
+      if (r.comparouCom) {
+        const novasNomes = novas.filter((c) => c.novo).map((c) => c.nome).filter(Boolean);
+        const alteradas = novas.filter((c) => c.mudancas && c.mudancas.length);
+        const per = `${brShort(r.comparouCom.periodoIni)}–${brShort(r.comparouCom.periodoFim)}`;
+        const L = [`Comparativo de campanhas (vs. ${per}):`];
+        if (novasNomes.length) { L.push('', 'Campanhas novas:'); novasNomes.forEach((n) => L.push(`• ${n}`)); }
+        if (alteradas.length) { L.push('', 'Alterações de ROAS objetivo / orçamento:'); alteradas.forEach((c) => L.push(`• ${c.nome} — ${c.mudancas.join('; ')}`)); }
+        if (!novasNomes.length && !alteradas.length) L.push('', 'Sem campanhas novas nem alterações de ROAS/orçamento no período.');
+        obsBlock = L.join('\n');
+      }
+      setD((p) => {
+        let obs = p.obs || '';
+        const prevAuto = p.campanhasObsAuto || '';
+        if (prevAuto && obs.indexOf(prevAuto) !== -1) obs = obs.replace(prevAuto, '');
+        obs = obs.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trim();
+        const newObs = obsBlock ? (obs ? obsBlock + '\n\n' + obs : obsBlock) : obs;
+        return { ...p, campanhas: novas, campanhasMeta: meta, obs: newObs, campanhasObsAuto: obsBlock };
+      });
       const nNovas = novas.filter((c) => c.novo).length;
       const nMud = novas.filter((c) => c.mudancas && c.mudancas.length).length;
       const partes = [`${active.length} ativa(s) na tabela`];

@@ -193,6 +193,7 @@ async function createReport(account, payload) {
       obsImages: it.isUserReport ? payload.obsImages || [] : [],
       campanhas: it.isUserReport ? payload.campanhas || [] : [],
       campanhasMeta: it.isUserReport ? payload.campanhasMeta || null : null,
+      campanhasObsAuto: it.isUserReport ? payload.campanhasObsAuto || '' : '',
       status: it.isUserReport ? payload.status || {} : {},
       prev: fim ? prevForFim(fim) : [],
     };
