@@ -456,7 +456,7 @@ function ComparePage({ d, variant }) {
 // faturamento da campanha (ROAS = fat/inv; ACOS = inv/fat; TACOS = inv/faturamento
 // total). Pagina em várias folhas A4 quando há muitas campanhas, em vez de
 // encolher tudo numa página só.
-const CAMP_ROWS_PER_PAGE = 16;
+const CAMP_ROWS_PER_PAGE = 22;
 function CampaignsPage({ d, variant }) {
   const all = (d.campanhas || []).filter((c) => String(c.nome || '').trim() || String(c.investimento || '').trim());
   if (!all.length) return null;
@@ -468,7 +468,6 @@ function CampaignsPage({ d, variant }) {
     if (!s) return '—';
     return unit === 'R$' ? 'R$ ' + s : unit === '%' ? s + '%' : unit === 'x' ? s + 'x' : s;
   };
-  const money = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct1 = (n) => (n == null ? '—' : n.toFixed(1).replace('.', ',') + '%');
   const roasOf = (c) => {
     const s = String(c.roas || '').trim();
@@ -483,11 +482,6 @@ function CampaignsPage({ d, variant }) {
     return pct1(r > 0 ? 100 / r : null);
   };
   const tacosOf = (c) => pct1(calcTacos({ investimento: c.investimento, faturamento: d.faturamento }));
-  const totalInvest = all.reduce((a, c) => a + parseNum(c.investimento), 0);
-  const totalFat = all.reduce((a, c) => a + parseNum(c.faturamento), 0);
-  const ovRoas = totalInvest > 0 ? totalFat / totalInvest : null;
-  const ovAcos = totalFat > 0 ? (totalInvest / totalFat) * 100 : null;
-  const ovTacos = calcTacos({ investimento: totalInvest, faturamento: d.faturamento });
   const novas = all.filter((c) => c.novo).length;
 
   const pages = [];
@@ -512,17 +506,17 @@ function CampaignsPage({ d, variant }) {
             {cmp ? <div className="camp-cmp">Comparado com o período anterior · {shortDate(cmp.periodoIni)}–{shortDate(cmp.periodoFim)}</div> : null}
             <table className="camp-doc">
               <thead>
-                <tr><th className="camp-doc-l">Campanha</th><th>ROAS obj.</th><th>Orçamento</th><th>Investimento</th><th>Faturamento</th><th>ROAS</th><th>ACOS</th><th>TACOS</th></tr>
+                <tr><th className="camp-doc-l camp-key">Campanha</th><th className="camp-key">ROAS obj.</th><th className="camp-key camp-key-end">Orçamento</th><th>Investimento</th><th>Faturamento</th><th>ROAS</th><th>ACOS</th><th>TACOS</th></tr>
               </thead>
               <tbody>
                 {chunk.map((c, i) => (
                   <tr key={i} className={c.novo ? 'camp-row-new' : ''}>
-                    <td className="camp-doc-l">
+                    <td className="camp-doc-l camp-key">
                       <span className="camp-nm">{c.nome || '—'}{c.novo ? <span className="camp-tag">Nova</span> : null}</span>
                       {(c.mudancas && c.mudancas.length) ? <span className="camp-chg-doc">{c.mudancas.join(' · ')}</span> : null}
                     </td>
-                    <td>{cell(c.roasObjetivo, 'x')}</td>
-                    <td>{cell(c.orcamento, 'R$')}</td>
+                    <td className="camp-key">{cell(c.roasObjetivo, 'x')}</td>
+                    <td className="camp-key camp-key-end">{cell(c.orcamento, 'R$')}</td>
                     <td>{cell(c.investimento, 'R$')}</td>
                     <td>{cell(c.faturamento, 'R$')}</td>
                     <td>{roasOf(c)}</td>
@@ -531,11 +525,6 @@ function CampaignsPage({ d, variant }) {
                   </tr>
                 ))}
               </tbody>
-              {last ? (
-                <tfoot>
-                  <tr><td className="camp-doc-l">Total</td><td></td><td></td><td>{money(totalInvest)}</td><td>{money(totalFat)}</td><td>{ovRoas != null ? ovRoas.toFixed(2).replace('.', ',') + 'x' : '—'}</td><td>{pct1(ovAcos)}</td><td>{pct1(ovTacos)}</td></tr>
-                </tfoot>
-              ) : null}
             </table>
             {last && removidas.length ? <div className="camp-rem">Pausadas/removidas neste período: {removidas.map((r) => r.nome).join(', ')}</div> : null}
             <footer className="cmp-foot">
