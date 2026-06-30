@@ -462,7 +462,7 @@ function CampaignsPage({ d, variant }) {
   const cell = (v, unit) => {
     const s = String(v == null ? '' : v).trim();
     if (!s) return '—';
-    return unit === 'R$' ? 'R$ ' + s : unit === '%' ? s + '%' : s;
+    return unit === 'R$' ? 'R$ ' + s : unit === '%' ? s + '%' : unit === 'x' ? s + 'x' : s;
   };
   const total = rows.reduce((a, c) => a + parseNum(c.investimento), 0);
   const novas = rows.filter((c) => c.novo).length;
@@ -480,7 +480,7 @@ function CampaignsPage({ d, variant }) {
       {cmp ? <div className="camp-cmp">Comparado com o período anterior · {shortDate(cmp.periodoIni)}–{shortDate(cmp.periodoFim)}</div> : null}
       <table className="camp-doc">
         <thead>
-          <tr><th className="camp-doc-l">Campanha</th><th>Orçamento</th><th>ACOS alvo</th><th>Investimento</th><th>ACOS</th></tr>
+          <tr><th className="camp-doc-l">Campanha</th><th>ROAS obj.</th><th>Orçamento</th><th>Investimento</th><th>ROAS</th></tr>
         </thead>
         <tbody>
           {rows.map((c, i) => (
@@ -489,10 +489,10 @@ function CampaignsPage({ d, variant }) {
                 <span className="camp-nm">{c.nome || '—'}{c.novo ? <span className="camp-tag">Nova</span> : null}</span>
                 {(c.mudancas && c.mudancas.length) ? <span className="camp-chg-doc">{c.mudancas.join(' · ')}</span> : null}
               </td>
+              <td>{cell(c.roasObjetivo, 'x')}</td>
               <td>{cell(c.orcamento, 'R$')}</td>
-              <td>{cell(c.acosAlvo, '%')}</td>
               <td>{cell(c.investimento, 'R$')}</td>
-              <td>{cell(c.acos, '%')}</td>
+              <td>{cell(c.roas, 'x')}</td>
             </tr>
           ))}
         </tbody>

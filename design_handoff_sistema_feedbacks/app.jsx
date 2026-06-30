@@ -750,7 +750,7 @@ function App() {
   const removePrev = (i) => setD((p) => ({ ...p, prev: (p.prev || []).filter((_, j) => j !== i) }));
   const prevField = (i) => (k) => (v) => setD((p) => { const arr = [...(p.prev || [])]; arr[i] = { ...arr[i], [k]: v }; return { ...p, prev: arr }; });
   // campanhas (tabela própria, fora das observações)
-  const addCampanha = () => setD((p) => ({ ...p, campanhas: [...(p.campanhas || []), { nome: '', orcamento: '', acosAlvo: '', investimento: '', acos: '' }] }));
+  const addCampanha = () => setD((p) => ({ ...p, campanhas: [...(p.campanhas || []), { nome: '', roasObjetivo: '', orcamento: '', investimento: '', roas: '' }] }));
   const removeCampanha = (i) => setD((p) => ({ ...p, campanhas: (p.campanhas || []).filter((_, j) => j !== i) }));
   const campField = (i) => (k) => (v) => setD((p) => { const arr = [...(p.campanhas || [])]; arr[i] = { ...arr[i], [k]: v }; return { ...p, campanhas: arr }; });
   // update a period's dates and auto-reorder the list (most recent first)
@@ -874,22 +874,22 @@ function App() {
       const paused = r.pausadasCount || 0;
       if (!active.length) { setCampMsg({ err: false, t: `Nenhuma campanha ativa no período${paused ? ` (${paused} inativa(s))` : ''}.` }); return; }
       const numStr = (n) => Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const pctStr = (v) => (v == null ? '' : Number(v).toFixed(1).replace('.', ','));
+      const roasStr = (v) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','));
       const money = (v) => (v == null ? '—' : 'R$ ' + numStr(v));
-      const pctd = (v) => (v == null ? '—' : pctStr(v) + '%');
+      const roasd = (v) => (v == null ? '—' : roasStr(v) + 'x');
       const fmtMud = (m) => {
         const out = [];
+        if (m.roasObjetivo) out.push(`ROAS obj. ${roasd(m.roasObjetivo.de)} → ${roasd(m.roasObjetivo.para)}`);
         if (m.orcamento) out.push(`Orç. ${money(m.orcamento.de)} → ${money(m.orcamento.para)}`);
-        if (m.acosAlvo) out.push(`ACOS alvo ${pctd(m.acosAlvo.de)} → ${pctd(m.acosAlvo.para)}`);
         return out;
       };
       const novas = active.map((c) => ({
         id: c.id != null ? String(c.id) : '',
         nome: c.nome || '',
+        roasObjetivo: c.roasObjetivo != null ? roasStr(c.roasObjetivo) : '',
         orcamento: c.orcamento != null ? numStr(c.orcamento) : '',
-        acosAlvo: c.acosAlvo != null ? pctStr(c.acosAlvo) : '',
         investimento: numStr(c.investimento),
-        acos: c.acos != null ? pctStr(c.acos) : '',
+        roas: c.roas != null ? roasStr(c.roas) : '',
         novo: !!c.novo,
         mudancas: c.mudancas ? fmtMud(c.mudancas) : null,
       }));
@@ -1076,10 +1076,10 @@ function App() {
                   <button type="button" className="camp-del" onClick={() => removeCampanha(i)} title="Remover campanha">×</button>
                 </div>
                 <div className="camp-grid">
-                  <div className="camp-f"><label>Orç. R$</label><input value={c.orcamento || ''} onChange={(e) => campField(i)('orcamento')(e.target.value)} /></div>
-                  <div className="camp-f"><label>ACOS alvo %</label><input value={c.acosAlvo || ''} onChange={(e) => campField(i)('acosAlvo')(e.target.value)} /></div>
+                  <div className="camp-f"><label>ROAS obj.</label><input value={c.roasObjetivo || ''} onChange={(e) => campField(i)('roasObjetivo')(e.target.value)} /></div>
+                  <div className="camp-f"><label>Orçamento R$</label><input value={c.orcamento || ''} onChange={(e) => campField(i)('orcamento')(e.target.value)} /></div>
                   <div className="camp-f"><label>Invest. R$</label><input value={c.investimento || ''} onChange={(e) => campField(i)('investimento')(e.target.value)} /></div>
-                  <div className="camp-f"><label>ACOS %</label><input value={c.acos || ''} onChange={(e) => campField(i)('acos')(e.target.value)} /></div>
+                  <div className="camp-f"><label>ROAS</label><input value={c.roas || ''} onChange={(e) => campField(i)('roas')(e.target.value)} /></div>
                 </div>
                 {(c.mudancas && c.mudancas.length) ? <div className="camp-chg">{c.mudancas.map((m, j) => <span key={j}>{m}</span>)}</div> : null}
               </div>

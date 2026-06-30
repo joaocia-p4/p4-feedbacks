@@ -366,16 +366,20 @@ async function campaigns(accountId, from, to) {
       const m = c.metrics || {};
       const cost = m.cost || 0;
       const rec = m.total_amount || 0;
+      // O ML expõe o alvo como ACOS objetivo (%). ROAS objetivo é o inverso: 100/ACOS.
+      const acosT = c.acos_target != null ? c.acos_target : (c.target_acos != null ? c.target_acos : null);
       out.push({
         id: c.id,
         nome: c.name || c.campaign_name || `Campanha ${c.id}`,
         status: c.status || null,
         orcamento: c.budget != null ? c.budget : (c.daily_budget != null ? c.daily_budget : null),
-        acosAlvo: c.acos_target != null ? c.acos_target : (c.target_acos != null ? c.target_acos : null),
+        acosAlvo: acosT,
+        roasObjetivo: acosT != null && acosT > 0 ? +(100 / acosT).toFixed(2) : null,
         estrategia: c.strategy || null,
         investimento: cost,
         receitaAds: rec,
         acos: rec > 0 ? +((cost / rec) * 100).toFixed(1) : null,
+        roas: cost > 0 ? +(rec / cost).toFixed(2) : null,
         unidades: m.units_quantity || 0,
       });
     }
@@ -432,8 +436,14 @@ function annotateCampaigns(currentAll, prevList, comparar) {
     const mud = {};
     const o = diffField(asNum(prev.orcamento), c.orcamento, 2);
     if (o) mud.orcamento = o;
-    const a = diffField(asNum(prev.acosAlvo), c.acosAlvo, 1);
-    if (a) mud.acosAlvo = a;
+    // ROAS objetivo do snapshot anterior: usa o salvo; se for antigo (só tinha
+    // ACOS alvo), deriva 100/ACOS para não acusar mudança falsa na transição.
+    const prevAcos = asNum(prev.acosAlvo);
+    const prevRoasObj = asNum(prev.roasObjetivo) != null
+      ? asNum(prev.roasObjetivo)
+      : (prevAcos && prevAcos > 0 ? +(100 / prevAcos).toFixed(2) : null);
+    const ro = diffField(prevRoasObj, c.roasObjetivo, 2);
+    if (ro) mud.roasObjetivo = ro;
     return { ...c, novo: false, ...(Object.keys(mud).length ? { mudancas: mud } : {}) };
   });
   const removidas = (prevList || [])
