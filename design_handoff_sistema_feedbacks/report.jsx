@@ -452,10 +452,13 @@ function ComparePage({ d, variant }) {
 }
 
 // ---------- campaigns page (shared) ----------
-// Tabela própria das campanhas de Ads, numa folha auto-ajustada (igual ao comparativo).
+// Tabela das campanhas de Ads. ACOS e TACOS são derivados (ACOS = 100/ROAS;
+// TACOS = investimento/faturamento). Pagina em várias folhas A4 quando há muitas
+// campanhas, em vez de encolher tudo numa página só.
+const CAMP_ROWS_PER_PAGE = 14;
 function CampaignsPage({ d, variant }) {
-  const rows = (d.campanhas || []).filter((c) => String(c.nome || '').trim() || String(c.investimento || '').trim());
-  if (!rows.length) return null;
+  const all = (d.campanhas || []).filter((c) => String(c.nome || '').trim() || String(c.investimento || '').trim());
+  if (!all.length) return null;
   const meta = d.campanhasMeta || {};
   const cmp = meta.comparadoCom;
   const removidas = (meta.removidas || []).filter((r) => String(r.nome || '').trim());
@@ -464,48 +467,67 @@ function CampaignsPage({ d, variant }) {
     if (!s) return '—';
     return unit === 'R$' ? 'R$ ' + s : unit === '%' ? s + '%' : unit === 'x' ? s + 'x' : s;
   };
-  const total = rows.reduce((a, c) => a + parseNum(c.investimento), 0);
-  const novas = rows.filter((c) => c.novo).length;
-  const fitKey = rows.length + '|' + (cmp ? 'c' : '') + '|' + removidas.length + '|' + (d.marketplace || '');
+  const pct1 = (n) => (n == null ? '—' : n.toFixed(1).replace('.', ',') + '%');
+  const acosOf = (c) => { const r = parseNum(c.roas); return pct1(r > 0 ? 100 / r : null); };
+  const tacosOf = (c) => pct1(calcTacos({ investimento: c.investimento, faturamento: d.faturamento }));
+  const total = all.reduce((a, c) => a + parseNum(c.investimento), 0);
+  const novas = all.filter((c) => c.novo).length;
+
+  const pages = [];
+  for (let i = 0; i < all.length; i += CAMP_ROWS_PER_PAGE) pages.push(all.slice(i, i + CAMP_ROWS_PER_PAGE));
+  const multi = pages.length > 1;
+
   return (
-    <CmpSheet variant={variant} fitKey={fitKey}>
-      <div className="cmp-page-head">
-        <img src={assetUrl('p4mark', 'assets/p4-mark.png')} alt="P4" className="cmp-mark" />
-        <div>
-          <Kicker>Campanhas de Ads</Kicker>
-          <h2 className="cmp-title">{d.marketplace || '—'} · Campanhas</h2>
-        </div>
-        <span className="cmp-count">{rows.length} ativa{rows.length === 1 ? '' : 's'}{novas ? ` · ${novas} nova${novas === 1 ? '' : 's'}` : ''}</span>
-      </div>
-      {cmp ? <div className="camp-cmp">Comparado com o período anterior · {shortDate(cmp.periodoIni)}–{shortDate(cmp.periodoFim)}</div> : null}
-      <table className="camp-doc">
-        <thead>
-          <tr><th className="camp-doc-l">Campanha</th><th>ROAS obj.</th><th>Orçamento</th><th>Investimento</th><th>ROAS</th></tr>
-        </thead>
-        <tbody>
-          {rows.map((c, i) => (
-            <tr key={i} className={c.novo ? 'camp-row-new' : ''}>
-              <td className="camp-doc-l">
-                <span className="camp-nm">{c.nome || '—'}{c.novo ? <span className="camp-tag">Nova</span> : null}</span>
-                {(c.mudancas && c.mudancas.length) ? <span className="camp-chg-doc">{c.mudancas.join(' · ')}</span> : null}
-              </td>
-              <td>{cell(c.roasObjetivo, 'x')}</td>
-              <td>{cell(c.orcamento, 'R$')}</td>
-              <td>{cell(c.investimento, 'R$')}</td>
-              <td>{cell(c.roas, 'x')}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr><td className="camp-doc-l">Total investido</td><td></td><td></td><td>{'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td></td></tr>
-        </tfoot>
-      </table>
-      {removidas.length ? <div className="camp-rem">Pausadas/removidas neste período: {removidas.map((r) => r.nome).join(', ')}</div> : null}
-      <footer className="cmp-foot">
-        <span>Método P4 · Performance que move o seu negócio</span>
-        <span>metodop4.com.br</span>
-      </footer>
-    </CmpSheet>
+    <React.Fragment>
+      {pages.map((chunk, pi) => {
+        const last = pi === pages.length - 1;
+        const fitKey = all.length + '|' + (cmp ? 'c' : '') + '|' + removidas.length + '|' + pi + '|' + (d.marketplace || '');
+        return (
+          <CmpSheet key={pi} variant={variant} fitKey={fitKey}>
+            <div className="cmp-page-head">
+              <img src={assetUrl('p4mark', 'assets/p4-mark.png')} alt="P4" className="cmp-mark" />
+              <div>
+                <Kicker>Campanhas de Ads</Kicker>
+                <h2 className="cmp-title">{d.marketplace || '—'} · Campanhas</h2>
+              </div>
+              <span className="cmp-count">{all.length} ativa{all.length === 1 ? '' : 's'}{novas ? ` · ${novas} nova${novas === 1 ? '' : 's'}` : ''}{multi ? ` · pág. ${pi + 1}/${pages.length}` : ''}</span>
+            </div>
+            {cmp ? <div className="camp-cmp">Comparado com o período anterior · {shortDate(cmp.periodoIni)}–{shortDate(cmp.periodoFim)}</div> : null}
+            <table className="camp-doc">
+              <thead>
+                <tr><th className="camp-doc-l">Campanha</th><th>ROAS obj.</th><th>Orçamento</th><th>Investimento</th><th>ROAS</th><th>ACOS</th><th>TACOS</th></tr>
+              </thead>
+              <tbody>
+                {chunk.map((c, i) => (
+                  <tr key={i} className={c.novo ? 'camp-row-new' : ''}>
+                    <td className="camp-doc-l">
+                      <span className="camp-nm">{c.nome || '—'}{c.novo ? <span className="camp-tag">Nova</span> : null}</span>
+                      {(c.mudancas && c.mudancas.length) ? <span className="camp-chg-doc">{c.mudancas.join(' · ')}</span> : null}
+                    </td>
+                    <td>{cell(c.roasObjetivo, 'x')}</td>
+                    <td>{cell(c.orcamento, 'R$')}</td>
+                    <td>{cell(c.investimento, 'R$')}</td>
+                    <td>{cell(c.roas, 'x')}</td>
+                    <td>{acosOf(c)}</td>
+                    <td>{tacosOf(c)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {last ? (
+                <tfoot>
+                  <tr><td className="camp-doc-l">Total investido</td><td></td><td></td><td>{'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td></td><td></td><td></td></tr>
+                </tfoot>
+              ) : null}
+            </table>
+            {last && removidas.length ? <div className="camp-rem">Pausadas/removidas neste período: {removidas.map((r) => r.nome).join(', ')}</div> : null}
+            <footer className="cmp-foot">
+              <span>Método P4 · Performance que move o seu negócio</span>
+              <span>metodop4.com.br</span>
+            </footer>
+          </CmpSheet>
+        );
+      })}
+    </React.Fragment>
   );
 }
 

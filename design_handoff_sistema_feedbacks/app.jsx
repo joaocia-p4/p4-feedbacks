@@ -753,6 +753,9 @@ function App() {
   const addCampanha = () => setD((p) => ({ ...p, campanhas: [...(p.campanhas || []), { nome: '', roasObjetivo: '', orcamento: '', investimento: '', roas: '' }] }));
   const removeCampanha = (i) => setD((p) => ({ ...p, campanhas: (p.campanhas || []).filter((_, j) => j !== i) }));
   const campField = (i) => (k) => (v) => setD((p) => { const arr = [...(p.campanhas || [])]; arr[i] = { ...arr[i], [k]: v }; return { ...p, campanhas: arr }; });
+  // ACOS e TACOS por campanha são derivados (ACOS = 100/ROAS; TACOS = invest/faturamento) → read-only
+  const campAcosTxt = (c) => { const r = window.parseNum(c.roas); return r > 0 ? (100 / r).toFixed(1).replace('.', ',') + '%' : '—'; };
+  const campTacosTxt = (c) => { const t = window.calcTacos({ investimento: c.investimento, faturamento: d.faturamento }); return t == null ? '—' : t.toFixed(1).replace('.', ',') + '%'; };
   // update a period's dates and auto-reorder the list (most recent first)
   const prevDates = (i) => (ini, fim) => setD((p) => {
     const arr = [...(p.prev || [])];
@@ -1080,6 +1083,8 @@ function App() {
                   <div className="camp-f"><label>Orçamento R$</label><input value={c.orcamento || ''} onChange={(e) => campField(i)('orcamento')(e.target.value)} /></div>
                   <div className="camp-f"><label>Invest. R$</label><input value={c.investimento || ''} onChange={(e) => campField(i)('investimento')(e.target.value)} /></div>
                   <div className="camp-f"><label>ROAS</label><input value={c.roas || ''} onChange={(e) => campField(i)('roas')(e.target.value)} /></div>
+                  <div className="camp-f"><label>ACOS</label><div className="camp-ro" title="Calculado a partir do ROAS">{campAcosTxt(c)}</div></div>
+                  <div className="camp-f"><label>TACOS</label><div className="camp-ro" title="Investimento ÷ faturamento total">{campTacosTxt(c)}</div></div>
                 </div>
                 {(c.mudancas && c.mudancas.length) ? <div className="camp-chg">{c.mudancas.map((m, j) => <span key={j}>{m}</span>)}</div> : null}
               </div>
