@@ -915,11 +915,13 @@ function App() {
       if (r.comparouCom) {
         const novasNomes = novas.filter((c) => c.novo).map((c) => c.nome).filter(Boolean);
         const alteradas = novas.filter((c) => c.mudancas && c.mudancas.length);
+        const removidasNomes = (meta.removidas || []).map((x) => x.nome).filter(Boolean);
         const per = `${brShort(r.comparouCom.periodoIni)}–${brShort(r.comparouCom.periodoFim)}`;
         const L = [`Comparativo de campanhas (vs. ${per}):`];
         if (novasNomes.length) { L.push('', 'Campanhas novas:'); novasNomes.forEach((n) => L.push(`• ${n}`)); }
         if (alteradas.length) { L.push('', 'Alterações de ROAS objetivo / orçamento:'); alteradas.forEach((c) => L.push(`• ${c.nome} — ${c.mudancas.join('; ')}`)); }
-        if (!novasNomes.length && !alteradas.length) L.push('', 'Sem campanhas novas nem alterações de ROAS/orçamento no período.');
+        if (removidasNomes.length) { L.push('', 'Pausadas/removidas:'); removidasNomes.forEach((n) => L.push(`• ${n}`)); }
+        if (!novasNomes.length && !alteradas.length && !removidasNomes.length) L.push('', 'Sem campanhas novas, alterações de ROAS/orçamento ou pausas no período.');
         obsBlock = L.join('\n');
       }
       setD((p) => {
