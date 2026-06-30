@@ -366,15 +366,21 @@ async function campaigns(accountId, from, to) {
       const m = c.metrics || {};
       const cost = m.cost || 0;
       const rec = m.total_amount || 0;
-      // O ML expõe o alvo como ACOS objetivo (%). ROAS objetivo é o inverso: 100/ACOS.
+      // ROAS objetivo: o ML agora trabalha com `roas_target` (1x–35x). O `acos_target`
+      // foi descontinuado (visível só até 30/03/2026); usamos como fallback p/ legado.
+      // Relação: ACOS = (1/ROAS)×100  →  ROAS = 100/ACOS.
+      const roasT = c.roas_target != null ? c.roas_target : (c.target_roas != null ? c.target_roas : null);
       const acosT = c.acos_target != null ? c.acos_target : (c.target_acos != null ? c.target_acos : null);
+      const roasObjetivo = roasT != null
+        ? +Number(roasT).toFixed(2)
+        : (acosT != null && acosT > 0 ? +(100 / acosT).toFixed(2) : null);
       out.push({
         id: c.id,
         nome: c.name || c.campaign_name || `Campanha ${c.id}`,
         status: c.status || null,
         orcamento: c.budget != null ? c.budget : (c.daily_budget != null ? c.daily_budget : null),
-        acosAlvo: acosT,
-        roasObjetivo: acosT != null && acosT > 0 ? +(100 / acosT).toFixed(2) : null,
+        roasObjetivo,
+        acosAlvo: acosT != null ? acosT : (roasObjetivo ? +(100 / roasObjetivo).toFixed(1) : null),
         estrategia: c.strategy || null,
         investimento: cost,
         receitaAds: rec,
