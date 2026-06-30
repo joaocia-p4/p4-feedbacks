@@ -451,6 +451,64 @@ function ComparePage({ d, variant }) {
   );
 }
 
+// ---------- campaigns page (shared) ----------
+// Tabela própria das campanhas de Ads, numa folha auto-ajustada (igual ao comparativo).
+function CampaignsPage({ d, variant }) {
+  const rows = (d.campanhas || []).filter((c) => String(c.nome || '').trim() || String(c.investimento || '').trim());
+  if (!rows.length) return null;
+  const meta = d.campanhasMeta || {};
+  const cmp = meta.comparadoCom;
+  const removidas = (meta.removidas || []).filter((r) => String(r.nome || '').trim());
+  const cell = (v, unit) => {
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return '—';
+    return unit === 'R$' ? 'R$ ' + s : unit === '%' ? s + '%' : s;
+  };
+  const total = rows.reduce((a, c) => a + parseNum(c.investimento), 0);
+  const novas = rows.filter((c) => c.novo).length;
+  const fitKey = rows.length + '|' + (cmp ? 'c' : '') + '|' + removidas.length + '|' + (d.marketplace || '');
+  return (
+    <CmpSheet variant={variant} fitKey={fitKey}>
+      <div className="cmp-page-head">
+        <img src={assetUrl('p4mark', 'assets/p4-mark.png')} alt="P4" className="cmp-mark" />
+        <div>
+          <Kicker>Campanhas de Ads</Kicker>
+          <h2 className="cmp-title">{d.marketplace || '—'} · Campanhas</h2>
+        </div>
+        <span className="cmp-count">{rows.length} ativa{rows.length === 1 ? '' : 's'}{novas ? ` · ${novas} nova${novas === 1 ? '' : 's'}` : ''}</span>
+      </div>
+      {cmp ? <div className="camp-cmp">Comparado com o período anterior · {shortDate(cmp.periodoIni)}–{shortDate(cmp.periodoFim)}</div> : null}
+      <table className="camp-doc">
+        <thead>
+          <tr><th className="camp-doc-l">Campanha</th><th>Orçamento</th><th>ACOS alvo</th><th>Investimento</th><th>ACOS</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((c, i) => (
+            <tr key={i} className={c.novo ? 'camp-row-new' : ''}>
+              <td className="camp-doc-l">
+                <span className="camp-nm">{c.nome || '—'}{c.novo ? <span className="camp-tag">Nova</span> : null}</span>
+                {(c.mudancas && c.mudancas.length) ? <span className="camp-chg-doc">{c.mudancas.join(' · ')}</span> : null}
+              </td>
+              <td>{cell(c.orcamento, 'R$')}</td>
+              <td>{cell(c.acosAlvo, '%')}</td>
+              <td>{cell(c.investimento, 'R$')}</td>
+              <td>{cell(c.acos, '%')}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr><td className="camp-doc-l">Total investido</td><td></td><td></td><td>{'R$ ' + total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td></td></tr>
+        </tfoot>
+      </table>
+      {removidas.length ? <div className="camp-rem">Pausadas/removidas neste período: {removidas.map((r) => r.nome).join(', ')}</div> : null}
+      <footer className="cmp-foot">
+        <span>Método P4 · Performance que move o seu negócio</span>
+        <span>metodop4.com.br</span>
+      </footer>
+    </CmpSheet>
+  );
+}
+
 // split observation text into page-sized chunks by measuring, so long notes
 // paginate into separate sheets instead of being sliced at the page fold
 function splitObs(text, measurer, firstMax, contMax) {
@@ -625,6 +683,7 @@ function ReportA({ d }) {
         );
       }) : null}
 
+      <CampaignsPage d={d} variant="a" />
       {hasPrev(d) ? <ComparePage d={d} variant="a" /> : null}
     </React.Fragment>
   );
@@ -717,6 +776,7 @@ function ReportB({ d }) {
         </footer>
       </div>
 
+      <CampaignsPage d={d} variant="b" />
       {hasPrev(d) ? <ComparePage d={d} variant="b" /> : null}
     </React.Fragment>
   );

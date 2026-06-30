@@ -749,6 +749,10 @@ function App() {
   const addPrev = () => setD((p) => ({ ...p, prev: [...(p.prev || []), blankPeriod((p.prev || []).length + 1)] }));
   const removePrev = (i) => setD((p) => ({ ...p, prev: (p.prev || []).filter((_, j) => j !== i) }));
   const prevField = (i) => (k) => (v) => setD((p) => { const arr = [...(p.prev || [])]; arr[i] = { ...arr[i], [k]: v }; return { ...p, prev: arr }; });
+  // campanhas (tabela própria, fora das observações)
+  const addCampanha = () => setD((p) => ({ ...p, campanhas: [...(p.campanhas || []), { nome: '', orcamento: '', acosAlvo: '', investimento: '', acos: '' }] }));
+  const removeCampanha = (i) => setD((p) => ({ ...p, campanhas: (p.campanhas || []).filter((_, j) => j !== i) }));
+  const campField = (i) => (k) => (v) => setD((p) => { const arr = [...(p.campanhas || [])]; arr[i] = { ...arr[i], [k]: v }; return { ...p, campanhas: arr }; });
   // update a period's dates and auto-reorder the list (most recent first)
   const prevDates = (i) => (ini, fim) => setD((p) => {
     const arr = [...(p.prev || [])];
@@ -857,32 +861,59 @@ function App() {
       setMlBusy(false);
     }
   };
-  // Puxa as campanhas de Product Ads do período e adiciona um resumo das ATIVAS
-  // às observações (estado atual — a API não tem histórico de alterações).
+  // Puxa as campanhas ATIVAS de Product Ads do período, JÁ comparadas com o
+  // relatório anterior (campanhas novas + mudanças de orçamento/ACOS-alvo +
+  // pausadas/removidas) — o histórico é construído a partir dos snapshots salvos.
   const pullCampaigns = async () => {
     if (!d.periodoIni || !d.periodoFim) { setCampMsg({ err: true, t: 'Defina o início e o fim do período primeiro.' }); return; }
     setCampBusy(true); setCampMsg(null);
     try {
       const r = await window.P4_API.meliCampaigns(link.accId, d.periodoIni, d.periodoFim);
       if (!r || r.ok === false) { setCampMsg({ err: true, t: 'Não foi possível buscar as campanhas — confira o acesso de Publicidade do app no Mercado Livre.' }); return; }
-      const all = r.campanhas || [];
-      const active = all.filter((c) => { const s = String(c.status || '').toLowerCase(); return !s || s === 'active' || s === 'enabled' || s === 'ativo'; });
-      const paused = all.length - active.length;
-      if (!active.length) { setCampMsg({ err: false, t: `Nenhuma campanha ativa no período${all.length ? ` (${all.length} no total)` : ''}.` }); return; }
-      const money = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const pctf = (v) => (v == null ? '—' : Number(v).toFixed(1).replace('.', ',') + '%');
-      const lines = active.map((c) => {
-        const parts = [];
-        if (c.orcamento != null) parts.push(`orç. ${money(c.orcamento)}`);
-        if (c.acosAlvo != null) parts.push(`ACOS alvo ${pctf(c.acosAlvo)}`);
-        parts.push(`invest. ${money(c.investimento)}`);
-        if (c.acos != null) parts.push(`ACOS ${pctf(c.acos)}`);
-        return `• ${c.nome} — ${parts.join(' · ')}`;
-      });
-      const header = `Campanhas ativas (${brShort(d.periodoIni)}–${brShort(d.periodoFim)}): ${active.length}${paused ? ` · ${paused} pausada(s)` : ''}`;
-      const block = header + '\n' + lines.join('\n');
-      setD((p) => ({ ...p, obs: (p.obs && p.obs.trim()) ? (p.obs.trim() + '\n\n' + block) : block }));
-      setCampMsg({ err: false, t: `${active.length} campanha(s) ativa(s) adicionada(s) às observações.` });
+      const active = r.campanhas || [];
+      const paused = r.pausadasCount || 0;
+      if (!active.length) { setCampMsg({ err: false, t: `Nenhuma campanha ativa no período${paused ? ` (${paused} inativa(s))` : ''}.` }); return; }
+      const numStr = (n) => Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pctStr = (v) => (v == null ? '' : Number(v).toFixed(1).replace('.', ','));
+      const money = (v) => (v == null ? '—' : 'R$ ' + numStr(v));
+      const pctd = (v) => (v == null ? '—' : pctStr(v) + '%');
+      const fmtMud = (m) => {
+        const out = [];
+        if (m.orcamento) out.push(`Orç. ${money(m.orcamento.de)} → ${money(m.orcamento.para)}`);
+        if (m.acosAlvo) out.push(`ACOS alvo ${pctd(m.acosAlvo.de)} → ${pctd(m.acosAlvo.para)}`);
+        return out;
+      };
+      const novas = active.map((c) => ({
+        id: c.id != null ? String(c.id) : '',
+        nome: c.nome || '',
+        orcamento: c.orcamento != null ? numStr(c.orcamento) : '',
+        acosAlvo: c.acosAlvo != null ? pctStr(c.acosAlvo) : '',
+        investimento: numStr(c.investimento),
+        acos: c.acos != null ? pctStr(c.acos) : '',
+        novo: !!c.novo,
+        mudancas: c.mudancas ? fmtMud(c.mudancas) : null,
+      }));
+      const meta = {
+        comparadoCom: r.comparouCom || null,
+        removidas: (r.removidas || []).map((x) => ({
+          nome: x.nome || '',
+          investimento: x.investimento != null && x.investimento !== '' ? (typeof x.investimento === 'number' ? numStr(x.investimento) : String(x.investimento)) : '',
+        })),
+      };
+      setD((p) => ({ ...p, campanhas: novas, campanhasMeta: meta }));
+      const nNovas = novas.filter((c) => c.novo).length;
+      const nMud = novas.filter((c) => c.mudancas && c.mudancas.length).length;
+      const partes = [`${active.length} ativa(s) na tabela`];
+      if (r.comparouCom) {
+        if (nNovas) partes.push(`${nNovas} nova(s)`);
+        if (nMud) partes.push(`${nMud} com mudança`);
+        if (meta.removidas.length) partes.push(`${meta.removidas.length} pausada(s)/removida(s)`);
+        if (!nNovas && !nMud && !meta.removidas.length) partes.push('sem alterações vs. período anterior');
+      } else {
+        partes.push('1º período — comparação a partir do próximo');
+      }
+      if (paused) partes.push(`${paused} inativa(s) ignorada(s)`);
+      setCampMsg({ err: false, t: partes.join(' · ') });
     } catch (e) {
       setCampMsg({ err: true, t: (e && e.message) || 'Falha ao buscar campanhas do Mercado Livre.' });
     } finally { setCampBusy(false); }
@@ -1023,11 +1054,7 @@ function App() {
             </div>
           </Section>
 
-          <Section title="Observações" collapsible summary={obsSummary} note={
-            <span className="ml-help right-open" tabIndex={0} role="button" aria-label="Como anexar prints" onClick={(e) => e.stopPropagation()}>?
-              <span className="ml-help-pop"><span className="ml-help-card">Cole (Ctrl/Cmd+V) um print nas <b>Notas</b> ou na galeria, ou clique em <b>+ Adicionar print</b> para enviar do computador.</span></span>
-            </span>
-          }>
+          <Section title="Campanhas de Ads" collapsible note={(d.campanhas || []).length ? `${(d.campanhas || []).length} campanha(s)` : ''}>
             {canPullMeli ? (
               <div style={{ marginBottom: 12 }}>
                 <button type="button" onClick={pullCampaigns} disabled={campBusy}
@@ -1038,6 +1065,37 @@ function App() {
                 {campMsg ? <div style={{ fontSize: 11.5, marginTop: 7, fontWeight: 600, color: campMsg.err ? '#ff8b83' : '#7be36f' }}>{campMsg.t}</div> : null}
               </div>
             ) : null}
+            {(d.campanhasMeta && d.campanhasMeta.comparadoCom) ? (
+              <p className="camp-cmp-note">Comparado com o período anterior · {brShort(d.campanhasMeta.comparadoCom.periodoIni)}–{brShort(d.campanhasMeta.comparadoCom.periodoFim)}</p>
+            ) : null}
+            {(d.campanhas || []).map((c, i) => (
+              <div className={'camp-card' + (c.novo ? ' is-new' : '')} key={i}>
+                <div className="camp-card-top">
+                  <input placeholder="Nome da campanha" value={c.nome || ''} onChange={(e) => campField(i)('nome')(e.target.value)} />
+                  {c.novo ? <span className="camp-badge">Nova</span> : null}
+                  <button type="button" className="camp-del" onClick={() => removeCampanha(i)} title="Remover campanha">×</button>
+                </div>
+                <div className="camp-grid">
+                  <div className="camp-f"><label>Orç. R$</label><input value={c.orcamento || ''} onChange={(e) => campField(i)('orcamento')(e.target.value)} /></div>
+                  <div className="camp-f"><label>ACOS alvo %</label><input value={c.acosAlvo || ''} onChange={(e) => campField(i)('acosAlvo')(e.target.value)} /></div>
+                  <div className="camp-f"><label>Invest. R$</label><input value={c.investimento || ''} onChange={(e) => campField(i)('investimento')(e.target.value)} /></div>
+                  <div className="camp-f"><label>ACOS %</label><input value={c.acos || ''} onChange={(e) => campField(i)('acos')(e.target.value)} /></div>
+                </div>
+                {(c.mudancas && c.mudancas.length) ? <div className="camp-chg">{c.mudancas.map((m, j) => <span key={j}>{m}</span>)}</div> : null}
+              </div>
+            ))}
+            {(d.campanhasMeta && d.campanhasMeta.removidas && d.campanhasMeta.removidas.length) ? (
+              <p className="camp-cmp-note camp-rem-note">Pausadas/removidas vs. anterior: {d.campanhasMeta.removidas.map((r) => r.nome).filter(Boolean).join(', ')}</p>
+            ) : null}
+            {!(d.campanhas || []).length ? <p style={{ fontSize: 11.5, color: 'var(--panel-mut)', margin: '2px 2px 10px' }}>Nenhuma campanha. {canPullMeli ? 'Puxe do Mercado Livre ou ' : ''}adicione manualmente.</p> : null}
+            <button type="button" className="add-prev" onClick={addCampanha}>+ Adicionar campanha</button>
+          </Section>
+
+          <Section title="Observações" collapsible summary={obsSummary} note={
+            <span className="ml-help right-open" tabIndex={0} role="button" aria-label="Como anexar prints" onClick={(e) => e.stopPropagation()}>?
+              <span className="ml-help-pop"><span className="ml-help-card">Cole (Ctrl/Cmd+V) um print nas <b>Notas</b> ou na galeria, ou clique em <b>+ Adicionar print</b> para enviar do computador.</span></span>
+            </span>
+          }>
             <Field label="Notas do período" hint="opcional" value={d.obs} onChange={set('obs')} placeholder="Destaques, alertas, próximos passos…" area wide onPaste={onObsPaste} />
             <ObsImages images={d.obsImages || []} onAdd={addImages} onRemove={removeImage} />
           </Section>

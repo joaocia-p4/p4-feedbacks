@@ -386,12 +386,69 @@ async function campaigns(accountId, from, to) {
   return { ok: true, campanhas: out };
 }
 
+// ── Comparação de campanhas (histórico construído a partir dos snapshots) ──
+// Chave de identidade de uma campanha: o id do ML quando existe; senão, o nome.
+function campKey(c) {
+  const id = c && c.id != null ? String(c.id).trim() : '';
+  return id ? 'id:' + id : 'nm:' + String((c && c.nome) || '').trim().toLowerCase();
+}
+// Lê um número que pode vir como número (atual) ou string pt-BR "1.234,56" (snapshot salvo).
+function asNum(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return isNaN(v) ? null : v;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = parseFloat(s.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+// Detecta mudança num campo numérico. Ignora quando o valor ATUAL é desconhecido
+// (a API às vezes não devolve orçamento/ACOS-alvo) para não gerar falso positivo.
+function diffField(prevVal, curVal, dp) {
+  if (curVal == null) return null;
+  const b = +Number(curVal).toFixed(dp);
+  if (prevVal == null) return { de: null, para: b };
+  const a = +Number(prevVal).toFixed(dp);
+  return a === b ? null : { de: a, para: b };
+}
+function isActiveCampaign(c) {
+  const s = String((c && c.status) || '').toLowerCase();
+  return !s || s === 'active' || s === 'enabled' || s === 'ativo';
+}
+// Recebe TODAS as campanhas atuais + a lista do snapshot anterior. Devolve só as
+// ATIVAS (anotadas com novo/mudancas), a contagem de inativas e as removidas.
+function annotateCampaigns(currentAll, prevList, comparar) {
+  const all = currentAll || [];
+  const active = all.filter(isActiveCampaign);
+  const pausadasCount = all.length - active.length;
+  if (!comparar) {
+    return { ativas: active.map((c) => ({ ...c, novo: false })), pausadasCount, removidas: [] };
+  }
+  const prevByKey = new Map();
+  for (const p of prevList || []) prevByKey.set(campKey(p), p);
+  const curKeys = new Set(active.map(campKey));
+  const ativas = active.map((c) => {
+    const prev = prevByKey.get(campKey(c));
+    if (!prev) return { ...c, novo: true };
+    const mud = {};
+    const o = diffField(asNum(prev.orcamento), c.orcamento, 2);
+    if (o) mud.orcamento = o;
+    const a = diffField(asNum(prev.acosAlvo), c.acosAlvo, 1);
+    if (a) mud.acosAlvo = a;
+    return { ...c, novo: false, ...(Object.keys(mud).length ? { mudancas: mud } : {}) };
+  });
+  const removidas = (prevList || [])
+    .filter((p) => !curKeys.has(campKey(p)))
+    .map((p) => ({ nome: p.nome || '', investimento: p.investimento != null ? p.investimento : '' }));
+  return { ativas, pausadasCount, removidas };
+}
+
 module.exports = {
   isConfigured,
   pkcePair,
   reportData,
   reputation,
   campaigns,
+  annotateCampaigns,
   signState,
   verifyState,
   signLink,

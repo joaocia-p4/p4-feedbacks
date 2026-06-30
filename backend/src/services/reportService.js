@@ -191,6 +191,8 @@ async function createReport(account, payload) {
       ...it.rec,
       obs: it.isUserReport ? payload.obs || '' : '',
       obsImages: it.isUserReport ? payload.obsImages || [] : [],
+      campanhas: it.isUserReport ? payload.campanhas || [] : [],
+      campanhasMeta: it.isUserReport ? payload.campanhasMeta || null : null,
       status: it.isUserReport ? payload.status || {} : {},
       prev: fim ? prevForFim(fim) : [],
     };
@@ -227,6 +229,28 @@ async function deleteReport(id) {
   if (!deleted) throw notFound('Relatório não encontrado.');
 }
 
+// Snapshot das campanhas do relatório SALVO mais recente desta conta cujo período
+// terminou antes de `beforeFim` (AAAA-MM-DD). Serve para comparar a semana atual
+// com a anterior e detectar campanhas novas / alterações — o histórico que a API
+// do ML não expõe nós construímos a partir dos próprios relatórios.
+async function lastCampaignsSnapshot(accountId, beforeFim) {
+  let q = db('reports').where({ account_id: accountId });
+  if (beforeFim) q = q.where('periodo_fim', '<', beforeFim);
+  const rows = await q
+    .select('periodo_ini', 'periodo_fim', 'payload')
+    .orderBy([
+      { column: 'periodo_fim', order: 'desc' },
+      { column: 'id', order: 'desc' },
+    ]);
+  for (const r of rows) {
+    const pl = parsePayload(r.payload) || {};
+    if (Array.isArray(pl.campanhas) && pl.campanhas.length) {
+      return { periodoIni: r.periodo_ini, periodoFim: r.periodo_fim, campanhas: pl.campanhas };
+    }
+  }
+  return null;
+}
+
 module.exports = {
   mapRow,
   fetchForAccounts,
@@ -234,6 +258,7 @@ module.exports = {
   listForAccount,
   createReport,
   deleteReport,
+  lastCampaignsSnapshot,
   parsePayload,
   num,
 };

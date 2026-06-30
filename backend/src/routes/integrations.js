@@ -6,6 +6,7 @@ const { asyncHandler, badRequest } = require('../lib/errors');
 const config = require('../config');
 const db = require('../db/knex');
 const clientService = require('../services/clientService');
+const reportService = require('../services/reportService');
 const meli = require('../services/meliService');
 
 const router = express.Router();
@@ -279,7 +280,9 @@ router.get(
 );
 
 // Campanhas de Product Ads do período (nome, status, orçamento, ACOS alvo,
-// métricas) — para registrar nas observações quais campanhas estão ativas.
+// métricas), JÁ COMPARADAS com o relatório anterior: marca as novas, as mudanças
+// de orçamento/ACOS-alvo e lista as pausadas/removidas. O histórico é construído
+// a partir dos snapshots guardados em cada relatório salvo.
 router.get(
   '/mercadolivre/campaigns',
   requireManager,
@@ -293,7 +296,18 @@ router.get(
     }
     const conn = await meli.getConnection(accId(req));
     if (!conn) throw badRequest('Conta não conectada ao Mercado Livre.');
-    res.json(await meli.campaigns(accId(req), from, to));
+    const r = await meli.campaigns(accId(req), from, to);
+    if (!r || r.ok === false) { res.json(r || { ok: false, campanhas: [] }); return; }
+    // período anterior = último relatório salvo que terminou ANTES do início deste
+    const snap = await reportService.lastCampaignsSnapshot(account.id, from);
+    const ann = meli.annotateCampaigns(r.campanhas, snap ? snap.campanhas : [], !!snap);
+    res.json({
+      ok: true,
+      campanhas: ann.ativas,
+      pausadasCount: ann.pausadasCount,
+      removidas: ann.removidas,
+      comparouCom: snap ? { periodoIni: snap.periodoIni, periodoFim: snap.periodoFim } : null,
+    });
   })
 );
 
