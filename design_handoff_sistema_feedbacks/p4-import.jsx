@@ -263,12 +263,15 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
               <li>Cliente com vários marketplaces: <b>repita o nome da loja</b> em várias linhas. <b>Metas são opcionais.</b></li>
               <li>Salve e envie o arquivo (<b>.xlsx</b> ou <b>.csv</b>).</li>
             </ol>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button className="btn-line" onClick={downloadTemplate}><I.upload size={15} /> Baixar modelo (.xlsx)</button>
-              <button className="btn-accent" onClick={() => fileRef.current && fileRef.current.click()}><I.upload size={16} /> Escolher arquivo</button>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={(e) => handleFile(e.target.files && e.target.files[0])} />
+            <div className="dropzone" style={{ marginTop: 16 }}>
+              <div className="dz-ic"><I.upload size={26} /></div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn-line" onClick={downloadTemplate}><I.upload size={15} /> Baixar modelo (.xlsx)</button>
+                <button className="btn-accent" onClick={() => fileRef.current && fileRef.current.click()}><I.upload size={16} /> Escolher arquivo</button>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={(e) => handleFile(e.target.files && e.target.files[0])} />
+              </div>
             </div>
-            {fileName && !err ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>Arquivo selecionado: <b style={{ color: 'var(--ink)' }}>{fileName}</b></div> : null}
+            {fileName && !err ? <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)', textAlign: 'center' }}>Arquivo selecionado: <b style={{ color: 'var(--ink)' }}>{fileName}</b></div> : null}
             {err ? <div style={errBox}>{err}</div> : null}
 
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
@@ -331,7 +334,11 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
           <>
             <div style={body}>
               <div style={{ textAlign: 'center', padding: '8px 0 18px' }}>
-                <div style={{ fontSize: 32 }}>{result.fail ? '⚠️' : '✅'}</div>
+                <div style={{ color: result.fail ? 'var(--red)' : 'var(--brand-ink)' }}>
+                  {result.fail
+                    ? <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4" /><path d="M12 17h.01" /></svg>
+                    : <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>}
+                </div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
                   {result.updated ? <><b style={{ color: '#2a6fdb' }}>{result.updated}</b> atualizado{result.updated === 1 ? '' : 's'}</> : null}
                   {result.updated && result.created ? ' · ' : null}
