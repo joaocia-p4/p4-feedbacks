@@ -468,6 +468,16 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
 .sec-head .mono{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .sec-head::after{content:"";flex:1;height:1px;background:var(--line)}
 
+/* charts CS */
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:22px}
+.kpi-mini{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--sh-1)}
+.kpi-mini .k{font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.kpi-mini .v{font-size:24px;font-weight:800;line-height:1}
+.kpi-mini .f{font-size:11px;color:var(--muted);margin-top:6px}
+.hbar-lab{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px}
+.hbar{height:10px;background:var(--stage);border-radius:6px;overflow:hidden}
+.hbar>span{display:block;height:100%;background:var(--grad)}
+
 .rtable{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--sh-1)}
 .rrow{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,.85fr) minmax(0,.85fr) minmax(0,.85fr) minmax(0,1fr) minmax(0,1.05fr) 150px;gap:14px;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line-2);transition:.13s}
 .rrow:last-child{border-bottom:0}

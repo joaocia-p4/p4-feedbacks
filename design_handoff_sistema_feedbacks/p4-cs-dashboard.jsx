@@ -8,7 +8,7 @@ function monthLbl(ym) { const p = String(ym).split('-'); return p.length === 2 ?
 
 function DashCard({ title, sub, children }) {
   return (
-    <div className="dash-no-break" style={{ background: 'var(--paper, #fff)', border: '1px solid var(--line, #e9ece9)', borderRadius: 14, padding: '16px 18px' }}>
+    <div className="card dash-no-break">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
         <b style={{ fontSize: 14 }}>{title}</b>
         {sub ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>{sub}</span> : null}
@@ -59,10 +59,10 @@ function HBars({ items, color, danger }) {
 
 function Kpi({ label, value, foot, footColor }) {
   return (
-    <div className="dash-no-break" style={{ background: 'var(--paper, #fff)', border: '1px solid var(--line, #e9ece9)', borderRadius: 13, padding: '14px 16px' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{value}</div>
-      {foot ? <div style={{ fontSize: 11.5, color: footColor || 'var(--muted)', marginTop: 6 }}>{foot}</div> : null}
+    <div className="kpi-mini dash-no-break">
+      <div className="k">{label}</div>
+      <div className="v">{value}</div>
+      {foot ? <div className="f" style={{ color: footColor || 'var(--muted)' }}>{foot}</div> : null}
     </div>
   );
 }
@@ -154,7 +154,6 @@ function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGoto
   }, []);
 
   const t = (data && data.totals) || {};
-  const wkColor = '#2A6FDB';
   const mkChart = (data && data.clientsByMarketplace || []).map((x) => ({ label: x.marketplace, value: x.clients, _c: window.mkColor(x.marketplace) }));
 
   return (
@@ -213,10 +212,10 @@ function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGoto
               {/* Gráficos */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 22 }}>
                 <DashCard title="Relatórios gerados por semana" sub="últimas 12 semanas">
-                  <VBars items={(data.reportsByWeek || []).map((w) => ({ label: weekLbl(w.weekStart), value: w.count }))} color={wkColor} />
+                  <VBars items={(data.reportsByWeek || []).map((w) => ({ label: weekLbl(w.weekStart), value: w.count }))} color="var(--grad)" />
                 </DashCard>
                 <DashCard title="Clientes por gestor" sub="responsável · atrasados">
-                  <HBars items={(data.clientsByManager || []).map((m) => ({ label: m.analista, value: m.clients, danger: m.overdue }))} color="#56D54F" danger="var(--red)" />
+                  <HBars items={(data.clientsByManager || []).map((m) => ({ label: m.analista, value: m.clients, danger: m.overdue }))} color="var(--grad)" danger="var(--red)" />
                 </DashCard>
                 <DashCard title="Entrada de clientes" sub="novos clientes por mês">
                   {(data.entriesByMonth || []).length
