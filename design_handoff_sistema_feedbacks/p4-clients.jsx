@@ -263,7 +263,6 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
 
   const lateN = activeScoped.filter((c) => c.status === 'atrasado').length;
   const emDia = activeScoped.length - lateN;
-  const totalMk = activeScoped.reduce((a, c) => a + (c.contas ? c.contas.filter((m) => m.ativo !== false).length : ((c.marketplaces && c.marketplaces.length) || 0)), 0);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const firstName = (user && user.nome) ? user.nome.split(' ')[0] : '';
