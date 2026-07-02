@@ -191,7 +191,9 @@ function ClientCard({ c, onOpen, onEdit, canManage }) {
   const I = window.Icons;
   const isLate = !c.encerrado && c.status === 'atrasado';
   return (
-    <div className={'ccard' + (c.encerrado ? ' is-closed' : '') + (isLate ? ' late' : '')} onClick={() => onOpen(c.id)}>
+    <div className={'ccard' + (c.encerrado ? ' is-closed' : '') + (isLate ? ' late' : '')} onClick={() => onOpen(c.id)}
+      role="button" tabIndex={0} aria-label={`Abrir ${c.loja}`}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(c.id); } }}>
       <div className="cc-head">
         <div className="nm">
           <div className="loja">{c.loja}</div>
@@ -343,7 +345,7 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
           <div className="toolbar">
             <div className="search">
               <I.search size={17} />
-              <input placeholder="Buscar por loja, analista ou marketplace…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input aria-label="Buscar clientes" placeholder="Buscar por loja, analista ou marketplace…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <button className={'due-toggle' + (dueOn ? ' on' : '')} onClick={() => setDueOn((v) => !v)}>
               <I.cal size={15} /> Para enviar {isToday ? 'hoje' : ''} <span className="cnt">{dueCount}</span>
@@ -352,7 +354,7 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
               <>
                 <div className="due-date">
                   <I.cal size={14} />
-                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value || window.P4_TODAY)} />
+                  <input type="date" aria-label="Data de envio" value={dueDate} onChange={(e) => setDueDate(e.target.value || window.P4_TODAY)} />
                 </div>
                 {!isToday ? <button className="chip" onClick={() => setDueDate(window.P4_TODAY)}>Hoje</button> : null}
                 <span className="due-info">{window.weekdayName(dueDate)}</span>
@@ -361,7 +363,7 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
             {seesAll && analistOptions.length > 1 ? (
               <div className={'filter-select' + (an !== 'Todos' ? ' on' : '')}>
                 <I.users size={16} />
-                <select value={an} onChange={(e) => setAn(e.target.value)} title="Filtrar por analista">
+                <select value={an} onChange={(e) => setAn(e.target.value)} aria-label="Filtrar por analista" title="Filtrar por analista">
                   <option value="Todos">Todos os analistas</option>
                   {analistOptions.map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>

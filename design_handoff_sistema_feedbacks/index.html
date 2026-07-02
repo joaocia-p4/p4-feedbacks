@@ -12,7 +12,7 @@
 <style>
 :root{
   --green:#56D54F;
-  --green-ink:#2f9a2b;
+  --green-ink:#207a1c;
   --ink:#1C242E;
   --accent:#56D54F;
   --accent-rgb:86,213,79;
@@ -39,6 +39,8 @@ body{
 }
 #root{height:100vh;overflow:hidden}
 .mono{font-family:'JetBrains Mono',monospace}
+/* foco visível por teclado — o offset desenha o anel sobre a superfície ao redor (verde ok em fundo claro e escuro) */
+button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ============================================================= LOGIN */
 .login{display:flex;min-height:100vh;background:#0b120f;color:var(--panel-txt)}
@@ -157,6 +159,9 @@ body{
 @media (prefers-reduced-motion: reduce){
   .login-aside::after,.la-top img{animation:none}
   .la-top,.la-tag,.la-head,.la-feats li,.la-foot,.login-card,.login-err{animation:none}
+  .rep .sk{animation:none}
+  .km-menu,.toast{animation:none}
+  .ccard:hover{transform:none}
 }
 
 /* ============================================================= APP SHELL (clients / history) */
@@ -370,18 +375,9 @@ body{
 .status-tag.closed{background:rgba(107,117,112,.14);color:var(--muted)}
 .status-tag.closed .d{background:#9aa39d}
 
-.cc-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:13px;background:#f6f8f6;border-radius:11px}
-.cc-met .k{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-.cc-met .v{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-.01em}
-.cc-met .v small{font-size:11px;font-weight:600;color:var(--muted);margin-left:1px}
 .cc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:2px}
 .cc-foot .lr{font-size:11px;color:var(--muted);font-weight:500}
 .cc-foot .lr b{color:var(--ink);font-weight:600;display:block;font-family:'JetBrains Mono',monospace;font-size:11.5px;margin-top:1px}
-.cc-foot-r{display:flex;align-items:center;gap:8px}
-.cc-edit{appearance:none;cursor:pointer;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:.13s;opacity:0}
-.ccard:hover .cc-edit{opacity:1}
-.cc-edit:hover{border-color:var(--accent);color:var(--green-ink);background:rgba(var(--accent-rgb),.07)}
-.cc-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:var(--muted);background:#eef1ee;padding:4px 9px;border-radius:7px}
 
 /* ---- bloco de reputação (Mercado Livre) no card ---- */
 .rep{display:flex;align-items:center;gap:12px;padding:13px;border-radius:13px;background:#f7f9f7;border:1px solid var(--line);margin-top:auto}
@@ -459,7 +455,7 @@ body{
 /* toast */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;font-weight:600;padding:12px 18px;border-radius:10px;box-shadow:0 18px 44px -16px rgba(0,0,0,.5);z-index:90;display:flex;align-items:center;gap:10px;animation:tin .2s ease}
 .toast .d{width:8px;height:8px;border-radius:50%;background:var(--green)}
-@keyframes tin{from{opacity:0;transform:transl(-50%,8px)}}
+@keyframes tin{from{opacity:0;transform:translate(-50%,8px)}}
 
 /* ---- marketplace chips (client cards / rows) ---- */
 .mk-row{display:flex;flex-wrap:wrap;gap:6px}
@@ -529,6 +525,12 @@ body{
   .ch-actions{width:100%}
   .ch-actions .btn-accent{flex:1;justify-content:center}
   .search{max-width:none}
+  .page-inner{padding:20px 16px 48px}
+  /* alvos de toque >=44px */
+  .chip,.due-toggle,.mk-tab,.wd-chip,.rep-connect{min-height:44px}
+  .km-btn,.iconbtn{width:44px;height:44px}
+  /* fonte 16px evita o auto-zoom do iOS ao focar inputs */
+  .search input,.filter-select select,.due-date input,.lf-in input,.lf-in select,.mk-lifecycle input,.meta-field .lf-in input{font-size:16px}
   .form-grid{grid-template-columns:1fr}
   .mk-metas{grid-template-columns:1fr 1fr}
   .mk-card-top{flex-wrap:wrap}
