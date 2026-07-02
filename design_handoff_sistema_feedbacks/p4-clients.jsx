@@ -40,6 +40,147 @@ function MkRow({ contas }) {
   );
 }
 
+// ---------------------------------------------------------------- reputação (Mercado Livre)
+// Cache de sessão + fila com concorrência limitada: cada card busca a própria
+// reputação quando entra na viewport (IntersectionObserver), no máx. 3 de cada vez.
+const REP_LEVELS_UI = [
+  { id: '1_red', hex: '#e53935' },
+  { id: '2_orange', hex: '#ff7733' },
+  { id: '3_yellow', hex: '#ffe600' },
+  { id: '4_light_green', hex: '#7dd956' },
+  { id: '5_green', hex: '#00a650' },
+];
+const REP_MEDALS = { platinum: 'MercadoLíder Platinum', gold: 'MercadoLíder Gold', silver: 'MercadoLíder' };
+const repCache = {};            // contaId -> { state: 'ok'|'notconnected'|'error', rep? }
+const repQueue = [];            // jobs pendentes
+let repActive = 0;
+const REP_MAX_CONCURRENT = 3;
+
+function repPump() {
+  while (repActive < REP_MAX_CONCURRENT && repQueue.length) {
+    const job = repQueue.shift();
+    repActive++;
+    job().finally(() => { repActive--; repPump(); });
+  }
+}
+
+function repFetch(contaId, cb) {
+  if (repCache[contaId]) { cb(repCache[contaId]); return; }
+  repQueue.push(async () => {
+    let res;
+    try {
+      const d = await window.P4_API.meliReputation(contaId);
+      res = (d && d.ok) ? { state: 'ok', rep: d } : { state: 'notconnected' };
+    } catch (e) {
+      res = (e && e.status === 400) ? { state: 'notconnected' } : { state: 'error' };
+    }
+    if (res.state !== 'error') repCache[contaId] = res; // erro não entra no cache (permite "tentar de novo")
+    cb(res);
+  });
+  repPump();
+}
+
+function RepShield() {
+  return (
+    <span className="rep-ic">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5l-8-3Z" /></svg>
+    </span>
+  );
+}
+
+function RepMuted({ title, sub, action, onAction }) {
+  return (
+    <div className="rep muted">
+      <RepShield />
+      <div className="rep-txt">
+        <div className="lvl">{title}</div>
+        <div className="medal">{sub}</div>
+      </div>
+      {action
+        ? <button className="rep-connect" onClick={(e) => { e.stopPropagation(); onAction(); }}>{action} →</button>
+        : null}
+    </div>
+  );
+}
+
+function ClientCardReputation({ client, canManage, onConnect }) {
+  const live = !!(window.P4_API && window.P4_API.isLogged());
+  const mlConta = (client.contas || []).find((m) => m.marketplace === 'Mercado Livre' && m.ativo !== false);
+  const contaId = mlConta ? mlConta.id : null;
+  const enabled = !!(live && contaId && !client.encerrado);
+  const [st, setSt] = React.useState(() => (enabled && repCache[contaId]) ? repCache[contaId] : { state: 'loading' });
+  const ref = React.useRef(null);
+
+  // lazy-load: só busca quando o bloco entra na viewport
+  React.useEffect(() => {
+    if (!enabled || st.state !== 'loading') return;
+    let cancel = false;
+    const load = () => repFetch(contaId, (res) => { if (!cancel) setSt(res); });
+    const el = ref.current;
+    if (el && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some((en) => en.isIntersecting)) { io.disconnect(); load(); }
+      }, { rootMargin: '120px' });
+      io.observe(el);
+      return () => { cancel = true; io.disconnect(); };
+    }
+    load(); // fallback sem IntersectionObserver
+    return () => { cancel = true; };
+  }, [enabled, contaId, st.state]);
+
+  if (client.encerrado) return <RepMuted title="Cliente encerrado" sub="Sem monitoramento ativo" />;
+  if (!mlConta) return <RepMuted title="Reputação indisponível" sub="Sem conta no Mercado Livre" />;
+  if (!live) return <RepMuted title="Reputação indisponível" sub="Modo demonstração" />;
+
+  if (st.state === 'loading') {
+    return (
+      <div className="rep loading" ref={ref}>
+        <div className="rep-therm">
+          {REP_LEVELS_UI.map((l) => <span key={l.id} className="rep-seg" style={{ background: '#c9cfca' }}></span>)}
+        </div>
+        <div className="rep-txt">
+          <div className="sk" style={{ height: 13, width: '55%' }}></div>
+          <div className="sk" style={{ height: 9, width: '40%', marginTop: 6 }}></div>
+        </div>
+      </div>
+    );
+  }
+  if (st.state === 'notconnected') {
+    return (
+      <RepMuted title="Reputação indisponível" sub="Mercado Livre não conectado"
+        action={canManage && onConnect ? 'Conectar' : null} onAction={onConnect} />
+    );
+  }
+  if (st.state === 'error') {
+    return (
+      <RepMuted title="Não foi possível carregar" sub="Reputação do Mercado Livre"
+        action="Tentar de novo" onAction={() => setSt({ state: 'loading' })} />
+    );
+  }
+
+  const r = st.rep;
+  if (!r.levelId) return <RepMuted title="Sem nível de reputação" sub={r.nickname ? `Conta ${r.nickname}` : 'Conta nova no Mercado Livre'} />;
+  const medal = REP_MEDALS[r.powerSeller];
+  return (
+    <div className="rep" title={r.nickname ? `Conta ${r.nickname}` : undefined}>
+      <div className="rep-therm">
+        {REP_LEVELS_UI.map((l) => (
+          <span key={l.id} className={'rep-seg' + (l.id === r.levelId ? ' on' : '')} style={{ background: l.hex, color: l.hex }}></span>
+        ))}
+      </div>
+      <div className="rep-txt">
+        <div className="lvl">Reputação {String(r.colorLabel || '').toLowerCase()}</div>
+        <div className="medal">
+          {medal
+            ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="9" r="6" /><path d="M8 14l-2 8 6-3 6 3-2-8" /></svg>{medal}</>
+            : 'Sem medalha'}
+        </div>
+      </div>
+    </div>
+  );
+}
+window.ClientCardReputation = ClientCardReputation;
+
 function ClientCard({ c, onOpen, onEdit }) {
   return (
     <div className={'ccard' + (c.encerrado ? ' is-closed' : '')} onClick={() => onOpen(c.id)}>
