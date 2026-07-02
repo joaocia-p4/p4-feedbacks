@@ -44,18 +44,16 @@ Os dados em `p4-data.jsx` são **mock** (clientes, marketplaces, relatórios, us
 - **Propósito**: listar clientes e identificar o que precisa de envio.
 - **Escopo por papel**: **admin** vê todos os clientes; **analista** vê só os clientes onde é o responsável.
 - **Topbar** (escura): marca; à direita, chip do usuário (avatar com iniciais + nome + pill do papel) que abre menu (e-mail, "Gerenciar usuários" só admin, "Sair").
-- **Cabeçalho**: título ("Todos os clientes" / "Meus clientes") + subtítulo com contagem e nº de atrasados; botão verde "Adicionar cliente" (só admin).
-- **Filtro de envio (`.duebar`)**: botão **"Para enviar"** (toggle). Ativo, mostra: seletor de data (`<input type=date>`, default = hoje), botão "Hoje", badge do dia da semana, e badge "+N atrasados".
-- **Toolbar**: busca (loja/analista/marketplace) + chips de marketplace (com bolinha na cor da marca) + chips de status (Todos / Em dia / Atrasado).
-- **Grade de cards** (`auto-fill minmax(296px,1fr)`, gap 16). Card (`.ccard`, branco, radius 15):
+- **Cabeçalho** (`.ch-top`): saudação ("Bom dia/Boa tarde/Boa noite, <nome> 👋") + título ("Todos os clientes" / "Meus clientes"; vira "Feedbacks para enviar" com o filtro ativo) + **stats inline** (`.ch-stats`): N ativos · N atrasados (ou "tudo em dia") · N para enviar hoje · N encerrados. À direita: menu de **ações em massa** ("Adicionar clientes em massa" = importar planilha; "Editar clientes em massa" = exporta `.xlsx` no mesmo formato da importação) e botão verde "Adicionar cliente" (admin/analista).
+- **Toolbar** (`.toolbar`): busca (loja/analista/marketplace); botão **"Para enviar hoje"** (`.due-toggle`, toggle, com contagem) que, ativo, revela seletor de data (`<input type=date>`, default = hoje), botão "Hoje" e o nome do dia da semana; filtro por analista (`.filter-select`, só para quem vê todos, quando há mais de um analista).
+- **Filtros** (`.filters`): chips de status (Todos / Em dia / Atrasado / Encerrado) + chips de marketplace (bolinha na cor da marca + contagem de ativos).
+- **Grade de cards** (`.cgrid`, `auto-fill minmax(296px,1fr)`, gap 16). Card (`.ccard`, branco, radius 15):
   - Nome da loja (bold 15.5) + linha "Tipo · Analista".
-  - Chip de agenda: ícone calendário + "Envio · segundas".
-  - Linha de chips de marketplace (cor tonal da marca + bolinha; bolinha vermelha se aquele marketplace está atrasado).
-  - Bloco de métricas (fundo `#f6f8f6`): **ROAS médio** (ponderado por faturamento) e **Faturamento** (soma do último de cada marketplace).
-  - Rodapé: "Último · <data>" + contagem "N marketplaces · M rel." + lápis **Editar** (admin, aparece no hover).
-  - Status pill canto sup. direito: "Em dia" (verde) / "Atrasado" (vermelho).
-  - Card tracejado "Adicionar cliente" ao final (admin).
-- **Layout alternativo "lista"** (`.clist`): tabela com Loja/Analista, Marketplace, ROAS, Faturamento, Último, Status. (Alternável via Tweaks; pode virar uma preferência do usuário.)
+  - Status pill no canto sup. direito: "Em dia" (verde) / "Atrasado" (vermelho) / "Encerrado" (cinza).
+  - Linha de chips de marketplace (cor tonal da marca + bolinha; cinza se encerrado, vermelha se aquele marketplace está atrasado).
+  - **Bloco de reputação do Mercado Livre** (`.rep`): termômetro de 5 níveis + rótulo de cor/nível + medalha MercadoLíder. Carregado **lazy** (só quando o card entra na viewport), com cache de sessão e fila de no máx. 3 buscas simultâneas. Estados: loading (skeleton), "não conectado" (ação "Conectar" para quem gerencia) e erro ("Tentar de novo"). Encerrados / sem conta ML aparecem mutados.
+  - Rodapé (`.cc-foot`): chip de agenda (ícone calendário + "toda segunda" etc.) + "Último · <data>".
+  - Card tracejado "Adicionar cliente" ao final (admin/analista).
 - **Clique no card** → Histórico do cliente.
 
 ### 3. Cadastro / Edição de Cliente (`p4-new-client.jsx`)
@@ -83,8 +81,8 @@ Admin: lista de usuários (avatar, nome, e-mail, pill do papel) + botão "Convid
 
 ## Interações & Comportamento
 - **Navegação** (SPA, em `p4-shell.jsx`): `login → clients → history`; `clients → new`; `clients/history → edit`; back retorna. Persistência da sessão em `localStorage` (`p4-shell-user`).
-- **Filtro "Para enviar"**: a lista passa a mostrar clientes cujo feedback está **agendado para a data selecionada OU que estão atrasados** (de qualquer data). Atrasados aparecem **primeiro**. Cabeçalho: "N para enviar · X no dia (dia, data) · Y atrasados".
-- **Hover**: cards elevam e ganham borda verde; lápis de editar aparece.
+- **Filtro "Para enviar"**: a lista passa a mostrar clientes cujo feedback está **agendado para a data selecionada OU que estão atrasados** (de qualquer data). Atrasados aparecem **primeiro**. O título vira "Feedbacks para enviar" e a toolbar mostra a data e o nome do dia da semana selecionados.
+- **Hover**: cards elevam e ganham borda verde.
 - **Estados vazios**: mensagens específicas para busca/filtro e para "nada para enviar".
 - **Responsivo**: grids colapsam; abaixo de 720px o form e a tabela reduzem colunas.
 

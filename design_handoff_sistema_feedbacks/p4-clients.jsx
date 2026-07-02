@@ -53,6 +53,7 @@ const REP_LEVELS_UI = [
 const REP_MEDALS = { platinum: 'MercadoLíder Platinum', gold: 'MercadoLíder Gold', silver: 'MercadoLíder' };
 const repCache = {};            // contaId -> { state: 'ok'|'notconnected'|'error', rep? }
 const repQueue = [];            // jobs pendentes
+const repInFlight = {};         // contaId -> [callbacks] aguardando a mesma busca em voo (dedup)
 let repActive = 0;
 const REP_MAX_CONCURRENT = 3;
 
@@ -66,6 +67,9 @@ function repPump() {
 
 function repFetch(contaId, cb) {
   if (repCache[contaId]) { cb(repCache[contaId]); return; }
+  // dedup: se já há uma busca em voo p/ esta conta, só anexa o callback (não enfileira outra)
+  if (repInFlight[contaId]) { repInFlight[contaId].push(cb); return; }
+  repInFlight[contaId] = [cb];
   repQueue.push(async () => {
     let res;
     try {
@@ -75,7 +79,9 @@ function repFetch(contaId, cb) {
       res = (e && e.status === 400) ? { state: 'notconnected' } : { state: 'error' };
     }
     if (res.state !== 'error') repCache[contaId] = res; // erro não entra no cache (permite "tentar de novo")
-    cb(res);
+    const cbs = repInFlight[contaId] || [cb];
+    delete repInFlight[contaId];
+    cbs.forEach((fn) => fn(res));
   });
   repPump();
 }
@@ -220,7 +226,6 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
 
-  const isAdmin = role === 'admin';
   const canManage = role === 'admin' || role === 'analista'; // CS é somente leitura
   const seesAll = role === 'admin' || role === 'cs'; // admin e CS veem todos
   const all = clients || window.P4_CLIENTS || [];
@@ -258,11 +263,9 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
   });
 
   const dueCount = scoped.filter(dueMatch).length;
-  const schedCount = scoped.filter((c) => !c.encerrado && window.isDueOn(c.agenda, dueDate)).length;
   const isToday = dueDate === window.P4_TODAY;
 
   const lateN = activeScoped.filter((c) => c.status === 'atrasado').length;
-  const emDia = activeScoped.length - lateN;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const firstName = (user && user.nome) ? user.nome.split(' ')[0] : '';
