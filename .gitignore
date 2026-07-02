@@ -23,3 +23,9 @@ Thumbs.db
 coverage/
 dist/
 .vercel/
+
+# ─── Mockups de design (não publicar no Vercel) ──────────────────────────────
+design_handoff_sistema_feedbacks/_mockup-*.html
+
+# ─── Scratch do subagent-driven-development ──────────────────────────────────
+.superpowers/
