@@ -312,7 +312,6 @@ function LoadingScreen({ label }) {
 function App() {
   const [t, setTweak] = window.useTweaks({
     roleOverride: 'auto',   // auto | admin | analista
-    layout: 'grade',        // grade | lista
     accent: '#56D54F',
   });
 
@@ -494,11 +493,11 @@ function App() {
         ? <window.History client={resolvedDetail} user={user} role={role} onBack={back} onEdit={() => editClient(resolvedDetail.id)} onLogout={logout} onManageUsers={() => setUsersOpen(true)} generatorHref={GENERATOR_HREF} onRefresh={() => loadDetail(resolvedDetail.id, { silent: true })} toast={toast} />
         : <LoadingScreen label="Cliente não encontrado." />;
   } else if (screen === 'settings') {
-    content = <window.Settings user={user} role={role} accent={t.accent} layout={t.layout}
-      onSetAccent={(v) => setTweak('accent', v)} onSetLayout={(v) => setTweak('layout', v)}
+    content = <window.Settings user={user} role={role} accent={t.accent}
+      onSetAccent={(v) => setTweak('accent', v)}
       onManageUsers={() => setUsersOpen(true)} onLogout={logout} toast={toast} />;
   } else {
-    content = <window.Clients user={user} role={role} layout={t.layout} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onImport={() => setImportOpen(true)} onGotoDashboard={() => setScreen('dashboard')} toast={toast} />;
+    content = <window.Clients user={user} role={role} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onImport={() => setImportOpen(true)} onGotoDashboard={() => setScreen('dashboard')} toast={toast} />;
   }
 
   return (
@@ -513,9 +512,6 @@ function App() {
         <window.TweakSection label="Demonstração" />
         <window.TweakRadio label="Ver como" value={t.roleOverride}
           options={['auto', 'admin', 'analista']} onChange={(v) => setTweak('roleOverride', v)} />
-        <window.TweakSection label="Layout" />
-        <window.TweakRadio label="Lista de clientes" value={t.layout}
-          options={['grade', 'lista']} onChange={(v) => setTweak('layout', v)} />
         <window.TweakSection label="Marca" />
         <window.TweakColor label="Cor de destaque" value={t.accent}
           options={['#56D54F', '#2A6FDB', '#E0922F', '#7A5AE0']} onChange={(v) => setTweak('accent', v)} />
