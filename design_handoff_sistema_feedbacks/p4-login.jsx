@@ -52,18 +52,25 @@ function Login({ onLogin }) {
   return (
     <div className="login">
       <aside className="login-aside">
+        <div className="la-grid"></div>
+        <div className="la-blob"></div>
         <div className="la-top">
           <img src="assets/p4-mark-white.png" alt="P4" />
           <span className="la-brand">Método P4</span>
         </div>
         <div className="la-mid">
           <div className="la-tag">Sistema de Feedbacks</div>
-          <h2 className="la-head">Relatórios de performance dos seus clientes, sob controle.</h2>
+          <h2 className="la-head">Relatórios de performance dos seus clientes, <em>sob controle</em>.</h2>
           <ul className="la-feats">
             <li><Check /> Relatórios automáticos e padronizados</li>
             <li><Check /> Integração com o Mercado Livre</li>
             <li><Check /> Acompanhamento de metas e prazos de envio</li>
           </ul>
+          <div className="la-stats">
+            <div className="la-stat"><b>128</b><span>clientes ativos</span></div>
+            <div className="la-stat"><b>5</b><span>marketplaces</span></div>
+            <div className="la-stat"><b>98%</b><span>entregas no prazo</span></div>
+          </div>
         </div>
         <div className="la-foot">Método P4 · Performance em marketplaces</div>
       </aside>
@@ -81,7 +88,16 @@ function Login({ onLogin }) {
         <h1>Bem-vindo de volta</h1>
         <p className="sub">Entre para gerar e acompanhar os relatórios dos seus clientes.</p>
 
-        {err ? <div className="login-err"><span>⚠</span>{err}</div> : null}
+        {err ? (
+          <div className="login-err" role="alert">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+            </svg>
+            {err}
+          </div>
+        ) : null}
 
         <label className="field">
           <span className="field-label">E-mail</span>
