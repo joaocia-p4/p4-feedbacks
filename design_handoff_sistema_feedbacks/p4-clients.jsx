@@ -1,4 +1,4 @@
-// p4-clients.jsx — client picker. Cards (default) or list layout via tweak.
+// p4-clients.jsx — client picker (grid only; list layout removed).
 // Analysts see only their own clients; admins see all + management actions.
 
 function MkBadge({ name }) {
@@ -181,48 +181,29 @@ function ClientCardReputation({ client, canManage, onConnect }) {
 }
 window.ClientCardReputation = ClientCardReputation;
 
-function ClientCard({ c, onOpen, onEdit }) {
+function ClientCard({ c, onOpen, onEdit, canManage }) {
+  const I = window.Icons;
+  const isLate = !c.encerrado && c.status === 'atrasado';
   return (
-    <div className={'ccard' + (c.encerrado ? ' is-closed' : '')} onClick={() => onOpen(c.id)}>
+    <div className={'ccard' + (c.encerrado ? ' is-closed' : '') + (isLate ? ' late' : '')} onClick={() => onOpen(c.id)}>
       <div className="cc-head">
         <div className="nm">
           <div className="loja">{c.loja}</div>
           <div className="an">{c.tipo} · {c.analista}</div>
-          <div className="cc-sched"><window.Icons.cal size={13} /> Envio · {window.agendaShort(c.agenda).toLowerCase()}</div>
         </div>
         <StatusTag status={c.status} encerrado={c.encerrado} />
       </div>
       <MkRow contas={c.contas} />
+      <ClientCardReputation client={c} canManage={canManage} onConnect={onEdit ? () => onEdit(c.id) : null} />
       <div className="cc-foot">
-        <span className="lr">Último · <b>{window.brShort(c.last)}</b></span>
-        <div className="cc-foot-r">
-          <span className="cc-count">{c.contas.length} {c.contas.length === 1 ? 'marketplace' : 'marketplaces'} · {c.n} rel.</span>
-          {onEdit
-            ? <button className="cc-edit" title="Editar cliente" onClick={(e) => { e.stopPropagation(); onEdit(c.id); }}><window.Icons.edit size={15} /></button>
-            : null}
-        </div>
+        <span className="cc-sched"><I.cal size={13} /> {window.agendaShort(c.agenda)}</span>
+        <span className="lr">Último<b>{window.brShort(c.last)}</b></span>
       </div>
     </div>
   );
 }
 
-function ClientRow({ c, onOpen }) {
-  return (
-    <div className={'clist-row' + (c.encerrado ? ' is-closed' : '')} onClick={() => onOpen(c.id)}>
-      <div>
-        <div className="loja">{c.loja}</div>
-        <div className="an">{c.tipo} · {c.analista}</div>
-      </div>
-      <div><MkRow contas={c.contas} /></div>
-      <div className="num">{String(c.roasW).replace('.', ',')}x</div>
-      <div className="num">{window.fmtMoneyShort(c.fatLatest)}</div>
-      <div className="num" style={{ fontWeight: 500, color: 'var(--muted)' }}>{window.brShort(c.last)}</div>
-      <div><StatusTag status={c.status} encerrado={c.encerrado} /></div>
-    </div>
-  );
-}
-
-function Clients({ user, role, layout, clients, loading, onOpenClient, onEditClient, onLogout, onManageUsers, onNewClient, onImport, onGotoDashboard, toast }) {
+function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onLogout, onManageUsers, onNewClient, onImport, onGotoDashboard, toast }) {
   const I = window.Icons;
   const [q, setQ] = React.useState('');
   const [mk, setMk] = React.useState('Todos');
@@ -249,7 +230,10 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
   const activeScoped = scoped.filter((c) => !c.encerrado);
   const closedN = scoped.length - activeScoped.length;
 
-  const markets = ['Todos', ...(window.P4_AD_MARKETPLACES || []).filter((m) => scoped.some((c) => c.marketplaces.includes(m)))];
+  const markets = (window.P4_AD_MARKETPLACES || []).filter((m) => scoped.some((c) => c.marketplaces.includes(m)));
+  const mkCount = (m) => activeScoped.filter((c) => c.marketplaces.includes(m)).length;
+  // contagem "para enviar hoje" fixa no header (independe da data escolhida no toggle)
+  const dueTodayCount = scoped.filter((c) => !c.encerrado && (window.isDueOn(c.agenda, window.P4_TODAY) || c.status === 'atrasado')).length;
   // analistas com clientes no escopo (filtro só faz sentido p/ quem vê todos)
   const analistOptions = [...new Set(scoped.map((c) => c.analista).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
 
@@ -320,19 +304,23 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
       <window.TopBar title="Clientes" user={user} role={role} onLogout={onLogout} onManageUsers={onManageUsers} />
       <div className="page">
         <div className="page-inner">
+
           <div className="ch-top">
             <div>
               <div className="ch-eyebrow">{greeting}, {firstName} 👋</div>
               <h1>{dueOn ? 'Feedbacks para enviar' : (seesAll ? 'Todos os clientes' : 'Meus clientes')}</h1>
-              <div className="ch-sub">
-                {dueOn
-                  ? <><b>{dueCount}</b> para enviar · {schedCount} no dia ({isToday ? 'hoje' : window.weekdayName(dueDate).toLowerCase()}, {window.brShort(dueDate)}) · <b style={{ color: lateN ? 'var(--red)' : 'inherit' }}>{lateN}</b> atrasado{lateN === 1 ? '' : 's'}</>
-                  : <><b>{activeScoped.length}</b> {activeScoped.length === 1 ? 'cliente' : 'clientes'}
-                      {lateN > 0 ? <> · <b style={{ color: 'var(--red)' }}>{lateN}</b> com relatório atrasado</> : <> · tudo em dia</>}
-                      {closedN > 0 ? <> · {closedN} encerrado{closedN === 1 ? '' : 's'}</> : null}</>}
+              <div className="ch-stats">
+                <span className="stat ok"><span className="dt"></span><span className="n">{activeScoped.length}</span> {activeScoped.length === 1 ? 'ativo' : 'ativos'}</span>
+                <span className="sep">·</span>
+                {lateN > 0
+                  ? <span className="stat late"><span className="dt"></span><span className="n">{lateN}</span> {lateN === 1 ? 'atrasado' : 'atrasados'}</span>
+                  : <span className="stat ok"><span className="dt"></span>tudo em dia</span>}
+                <span className="sep">·</span>
+                <span className="stat send"><span className="dt"></span><span className="n">{dueTodayCount}</span> para enviar hoje</span>
+                {closedN > 0 ? <><span className="sep">·</span><span className="stat closed"><span className="dt"></span>{closedN} {closedN === 1 ? 'encerrado' : 'encerrados'}</span></> : null}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="ch-actions">
               {canManage ? (
                 <div style={{ position: 'relative' }} ref={menuRef}>
                   <button className={'km-btn' + (menuOpen ? ' on' : '')} onClick={() => setMenuOpen((o) => !o)} title="Ações em massa" aria-label="Ações em massa">
@@ -350,53 +338,24 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
             </div>
           </div>
 
-          <div className="kpis" style={{ marginBottom: 22 }}>
-            <div className="kpi">
-              <div className="k">Clientes</div>
-              <div className="v">{activeScoped.length}</div>
-              <div className="trend" style={{ color: 'var(--muted)' }}>{totalMk} {totalMk === 1 ? 'marketplace' : 'marketplaces'}{closedN ? ` · ${closedN} encerrado${closedN === 1 ? '' : 's'}` : ''}</div>
-            </div>
-            <div className="kpi">
-              <div className="k">Em dia</div>
-              <div className="v" style={{ color: 'var(--green-ink)' }}>{emDia}</div>
-              <div className="trend" style={{ color: 'var(--muted)' }}>{activeScoped.length ? Math.round((emDia / activeScoped.length) * 100) : 0}% dos ativos</div>
-            </div>
-            <div className="kpi">
-              <div className="k">Atrasados</div>
-              <div className="v" style={{ color: lateN ? 'var(--red)' : 'var(--ink)' }}>{lateN}</div>
-              <div className="trend" style={{ color: lateN ? 'var(--red)' : 'var(--muted)' }}>{lateN ? 'precisam de atenção' : 'tudo certo'}</div>
-            </div>
-            <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => setDueOn(true)} title="Ver feedbacks para enviar">
-              <div className="k">Para enviar</div>
-              <div className="v">{dueCount}</div>
-              <div className="trend" style={{ color: 'var(--muted)' }}>{isToday ? 'na data de hoje' : window.brShort(dueDate)}</div>
-            </div>
-          </div>
-
-          <div className="duebar">
-            <button className={'due-toggle' + (dueOn ? ' on' : '')} onClick={() => setDueOn((v) => !v)}>
-              <I.cal size={15} /> Para enviar {dueOn ? `· ${dueCount}` : ''}
-            </button>
-            {dueOn
-              ? (
-                <>
-                  <div className="due-date">
-                    <I.cal size={14} />
-                    <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value || window.P4_TODAY)} />
-                  </div>
-                  <button className={'chip' + (isToday ? ' on' : '')} onClick={() => setDueDate(window.P4_TODAY)}>Hoje</button>
-                  <span className="due-info">{window.weekdayName(dueDate)}</span>
-                  {lateN > 0 ? <span className="due-late">+{lateN} atrasado{lateN === 1 ? '' : 's'}</span> : null}
-                </>
-              )
-              : <span className="due-hint">agendados para a data + relatórios atrasados</span>}
-          </div>
-
           <div className="toolbar">
             <div className="search">
               <I.search size={17} />
               <input placeholder="Buscar por loja, analista ou marketplace…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
+            <button className={'due-toggle' + (dueOn ? ' on' : '')} onClick={() => setDueOn((v) => !v)}>
+              <I.cal size={15} /> Para enviar {isToday ? 'hoje' : ''} <span className="cnt">{dueCount}</span>
+            </button>
+            {dueOn ? (
+              <>
+                <div className="due-date">
+                  <I.cal size={14} />
+                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value || window.P4_TODAY)} />
+                </div>
+                {!isToday ? <button className="chip" onClick={() => setDueDate(window.P4_TODAY)}>Hoje</button> : null}
+                <span className="due-info">{window.weekdayName(dueDate)}</span>
+              </>
+            ) : null}
             {seesAll && analistOptions.length > 1 ? (
               <div className={'filter-select' + (an !== 'Todos' ? ' on' : '')}>
                 <I.users size={16} />
@@ -406,44 +365,41 @@ function Clients({ user, role, layout, clients, loading, onOpenClient, onEditCli
                 </select>
               </div>
             ) : null}
-            <div className="chips">
-              {markets.map((m) => (
-                <button key={m} className={'chip' + (mk === m ? ' on' : '')} onClick={() => setMk(m)}>
-                  {m !== 'Todos' ? <span className="dot" style={{ background: window.mkBrand(m) }}></span> : null}{m}
-                </button>
-              ))}
-            </div>
+          </div>
+
+          <div className="filters">
             <div className="chips">
               {['Todos', 'Em dia', 'Atrasado', 'Encerrado'].map((s) => (
                 <button key={s} className={'chip' + (st === s ? ' on' : '')} onClick={() => setSt(s)}>{s}</button>
               ))}
             </div>
+            {markets.length > 1 ? <div className="div"></div> : null}
+            {markets.length > 1 ? (
+              <div className="chips">
+                {markets.map((m) => (
+                  <button key={m} className={'chip' + (mk === m ? ' on' : '')} onClick={() => setMk(mk === m ? 'Todos' : m)}>
+                    <span className="dot" style={{ background: window.mkBrand(m) }}></span>{m} <span className="c">{mkCount(m)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {loading && all.length === 0
             ? <div className="empty"><b>Carregando clientes…</b>Buscando os dados no servidor.</div>
             : list.length === 0
             ? <div className="empty"><b>{dueOn ? 'Nada para enviar' : 'Nenhum cliente encontrado'}</b>{dueOn ? 'Nenhum feedback agendado para a data e nenhum atrasado.' : 'Ajuste a busca ou os filtros acima.'}</div>
-            : layout === 'lista'
-              ? (
-                <div className="clist">
-                  <div className="clist-row head">
-                    <span>Loja / Analista</span><span>Marketplace</span><span>ROAS</span><span>Faturamento</span><span>Último</span><span>Status</span>
-                  </div>
-                  {list.map((c) => <ClientRow key={c.id} c={c} onOpen={onOpenClient} />)}
-                </div>
-              )
-              : (
-                <div className="cgrid">
-                  {list.map((c) => <ClientCard key={c.id} c={c} onOpen={onOpenClient} onEdit={canManage ? onEditClient : null} />)}
-                  {canManage
-                    ? <button className="add-card" onClick={onNewClient}>
-                        <span className="plus"><I.plus size={22} /></span>
-                        Adicionar cliente
-                      </button>
-                    : null}
-                </div>
-              )}
+            : (
+              <div className="cgrid">
+                {list.map((c) => <ClientCard key={c.id} c={c} onOpen={onOpenClient} onEdit={canManage ? onEditClient : null} canManage={canManage} />)}
+                {canManage
+                  ? <button className="add-card" onClick={onNewClient}>
+                      <span className="plus"><I.plus size={22} /></span>
+                      Adicionar cliente
+                    </button>
+                  : null}
+              </div>
+            )}
         </div>
       </div>
     </div>
