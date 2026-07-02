@@ -52,8 +52,8 @@ function Login({ onLogin }) {
   return (
     <div className="login">
       <aside className="login-aside">
-        <div className="la-grid"></div>
-        <div className="la-blob"></div>
+        <div className="la-grid" aria-hidden="true"></div>
+        <div className="la-blob" aria-hidden="true"></div>
         <div className="la-top">
           <img src="assets/p4-mark-white.png" alt="P4" />
           <span className="la-brand">Método P4</span>
@@ -90,7 +90,7 @@ function Login({ onLogin }) {
 
         {err ? (
           <div className="login-err" role="alert">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
               <path d="M12 9v4" />
               <path d="M12 17h.01" />

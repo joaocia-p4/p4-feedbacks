@@ -336,8 +336,8 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
               <div style={{ textAlign: 'center', padding: '8px 0 18px' }}>
                 <div style={{ color: result.fail ? 'var(--red)' : 'var(--brand-ink)' }}>
                   {result.fail
-                    ? <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4" /><path d="M12 17h.01" /></svg>
-                    : <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>}
+                    ? <svg aria-hidden="true" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4" /><path d="M12 17h.01" /></svg>
+                    : <svg aria-hidden="true" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>}
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>
                   {result.updated ? <><b style={{ color: '#2a6fdb' }}>{result.updated}</b> atualizado{result.updated === 1 ? '' : 's'}</> : null}
