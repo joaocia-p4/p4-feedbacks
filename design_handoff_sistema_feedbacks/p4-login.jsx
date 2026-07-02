@@ -66,11 +66,6 @@ function Login({ onLogin }) {
             <li><Check /> Integração com o Mercado Livre</li>
             <li><Check /> Acompanhamento de metas e prazos de envio</li>
           </ul>
-          <div className="la-stats">
-            <div className="la-stat"><b>128</b><span>clientes ativos</span></div>
-            <div className="la-stat"><b>5</b><span>marketplaces</span></div>
-            <div className="la-stat"><b>98%</b><span>entregas no prazo</span></div>
-          </div>
         </div>
         <div className="la-foot">Método P4 · Performance em marketplaces</div>
       </aside>
