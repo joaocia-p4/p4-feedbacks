@@ -419,13 +419,9 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
 .rep .sk{background:linear-gradient(90deg,#e9ece9 25%,#f7f9f7 37%,#e9ece9 63%);background-size:400% 100%;animation:repsk 1.2s ease infinite;border-radius:6px}
 @keyframes repsk{0%{background-position:100% 0}100%{background-position:0 0}}
 
-.add-card{
-  border:1.5px dashed #c4cbc4;background:transparent;border-radius:15px;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:200px;
-  color:var(--muted);font-family:'Sora';font-weight:600;font-size:13.5px;transition:.16s;
-}
-.add-card:hover{border-color:var(--accent);color:var(--green-ink);background:rgba(var(--accent-rgb),.05)}
-.add-card .plus{width:42px;height:42px;border-radius:12px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center}
+.add-card{border:1.5px dashed #c5d0c5;background:transparent;border-radius:var(--r-card);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;min-height:230px;color:var(--muted);font-weight:600;font-size:13.5px;transition:.16s var(--ease)}
+.add-card:hover{border-color:var(--brand);color:var(--brand-ink);background:rgba(34,197,94,.05)}
+.add-card .plus{width:46px;height:46px;border-radius:14px;background:var(--grad);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh-glow)}
 .add-card:hover .plus{background:var(--accent);color:#0d1410}
 
 .empty{text-align:center;padding:70px 20px;color:var(--muted)}
