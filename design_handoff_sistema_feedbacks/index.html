@@ -450,7 +450,12 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
 .hh-actions{display:flex;gap:10px;flex-wrap:wrap}
 
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:26px}
-.kpi{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:16px 17px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:16px 17px;box-shadow:var(--sh-1);position:relative;overflow:hidden;transition:.18s var(--ease)}
+.kpi:hover{transform:translateY(-2px);box-shadow:var(--sh-2)}
+.kpi.hero{background:var(--grad);color:#fff;border:0}
+.kpi.hero .k,.kpi.hero .trend{color:rgba(255,255,255,.82)}
+.kpi.hero .v{color:#fff}
+.kpi.hero .trend.up,.kpi.hero .trend.down{color:rgba(255,255,255,.82)}
 .kpi .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
 .kpi .v{font-size:25px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-.02em;line-height:1}
 .kpi .v small{font-size:13px;color:var(--muted);font-weight:600}
@@ -463,11 +468,11 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
 .sec-head .mono{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .sec-head::after{content:"";flex:1;height:1px;background:var(--line)}
 
-.rtable{background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.rrow{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,.85fr) minmax(0,.85fr) minmax(0,.85fr) minmax(0,1fr) minmax(0,1.05fr) 150px;gap:14px;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line);transition:.13s}
+.rtable{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--sh-1)}
+.rrow{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,.85fr) minmax(0,.85fr) minmax(0,.85fr) minmax(0,1fr) minmax(0,1.05fr) 150px;gap:14px;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line-2);transition:.13s}
 .rrow:last-child{border-bottom:0}
-.rrow:hover{background:#f9faf9}
-.rrow.head{background:#f6f8f6;padding:11px 20px}
+.rrow:hover{background:var(--surface-2)}
+.rrow.head{background:var(--surface-2);padding:11px 20px}
 .rrow.head span{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
 .rrow .per{font-weight:600;font-size:13px}
 .rrow .per .mono{font-size:10px;color:var(--muted);font-weight:500;display:block;margin-top:2px}
@@ -495,12 +500,12 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
 
 /* ---- marketplace tabs (history) ---- */
 .mk-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
-.mk-tab{appearance:none;cursor:pointer;display:flex;align-items:center;gap:8px;background:var(--paper);border:1.5px solid var(--line);color:var(--muted);font-family:'Sora';font-weight:600;font-size:13px;padding:9px 14px;border-radius:10px;transition:.14s}
+.mk-tab{appearance:none;cursor:pointer;display:flex;align-items:center;gap:8px;background:var(--surface);border:1.5px solid var(--line);color:var(--muted);font-family:'Sora';font-weight:600;font-size:13px;padding:9px 14px;border-radius:var(--r-md);transition:.14s}
 .mk-tab:hover{border-color:#c9cfca}
 .mk-tab .d{width:8px;height:8px;border-radius:50%}
 .mk-tab.on{background:#fff;font-weight:700}
 .mk-tab.is-closed{opacity:.55}
-.mk-tab-n{font-family:'JetBrains Mono',monospace;font-size:10px;background:#eef1ee;color:var(--muted);padding:2px 6px;border-radius:6px;font-weight:600}
+.mk-tab-n{font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--surface-2);color:var(--muted);padding:2px 6px;border-radius:6px;font-weight:600}
 
 /* ---- new-client form ---- */
 .form-card{background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden}

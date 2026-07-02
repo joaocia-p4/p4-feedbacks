@@ -365,8 +365,16 @@ function MetricsExplorer({ reports }) {
             return (
               <g className="mx-grp" key={m.key + ':' + from + ':' + to}>
                 {singleLine ? (
-                  <path className="mx-area" d={`${d} L${pts[pts.length - 1][0].toFixed(1)},${(padT + plotH).toFixed(1)} L${pts[0][0].toFixed(1)},${(padT + plotH).toFixed(1)} Z`}
-                        fill={m.color} opacity="0.09" />
+                  <>
+                    <defs>
+                      <linearGradient id="mxArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stopColor={m.color} stopOpacity="0.18" />
+                        <stop offset="1" stopColor={m.color} stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <path className="mx-area" d={`${d} L${pts[pts.length - 1][0].toFixed(1)},${(padT + plotH).toFixed(1)} L${pts[0][0].toFixed(1)},${(padT + plotH).toFixed(1)} Z`}
+                          fill="url(#mxArea)" />
+                  </>
                 ) : null}
                 <path className="mx-line" pathLength="1" d={d} fill="none" stroke={m.color} strokeWidth="2.4"
                       strokeLinejoin="round" strokeLinecap="round" style={{ animationDelay: (mi * 0.07).toFixed(2) + 's' }} />
@@ -747,7 +755,7 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
               <div className="v">{reports.length}</div>
               <div className="trend" style={{ color: 'var(--muted)' }}>{conta.marketplace}</div>
             </div>
-            <div className="kpi">
+            <div className="kpi hero">
               <div className="k">ROAS atual</div>
               <div className="v">{String(last.roas).replace('.', ',')}<small>x</small></div>
               <Trend v={roasDelta} />
