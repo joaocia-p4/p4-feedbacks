@@ -132,6 +132,36 @@ function blankPeriod(n) {
 
 function isoDate(dt) { return dt.toISOString().slice(0, 10); }
 
+// ---- Observações em blocos (texto/imagem) ----
+function newId() { return 'b' + Math.random().toString(36).slice(2, 9); }
+function makeTextBlock(html) { return { id: newId(), type: 'text', html: html || '' }; }
+function makeImageBlock(src, widthPct) { return { id: newId(), type: 'image', src, widthPct: widthPct == null ? 100 : widthPct }; }
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function obsTextToHtml(text) {
+  const paras = String(text || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  return paras.map((p) => '<p>' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>').join('');
+}
+function obsToBlocks(obs, obsImages) {
+  const blocks = [];
+  const html = obsTextToHtml(obs);
+  if (html) blocks.push(makeTextBlock(html));
+  (obsImages || []).forEach((src) => { if (src) blocks.push(makeImageBlock(src, 100)); });
+  return blocks;
+}
+function blocksToPlainText(blocks) {
+  return (blocks || [])
+    .filter((b) => b.type === 'text')
+    .map((b) => String(b.html || '')
+      .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim())
+    .filter(Boolean).join('\n\n');
+}
+// só adiciona obsBlocks quando ausente (relatório antigo) — não sobrescreve
+function ensureObsBlocks(d) {
+  if (Array.isArray(d.obsBlocks)) return d;
+  return { ...d, obsBlocks: obsToBlocks(d.obs, d.obsImages) };
+}
+
 // turn an imported report into the most-recent "previous period" of a fresh report,
 // carrying identification + metas and advancing the period forward by one interval
 function rollForward(imp) {
@@ -544,29 +574,6 @@ function Section({ title, note, summary, collapsible, defaultOpen = true, childr
   );
 }
 
-// print/screenshot gallery for the Observações block
-function ObsImages({ images, onAdd, onRemove }) {
-  const inputRef = useRef(null);
-  return (
-    <div className="obs-imgs">
-      <div className="obs-thumbs">
-        {images.map((src, i) => (
-          <div className="obs-thumb" key={i}>
-            <img src={src} alt={'Print ' + (i + 1)} />
-            <button type="button" className="obs-thumb-del" onClick={() => onRemove(i)} title="Remover print">×</button>
-          </div>
-        ))}
-        <button type="button" className="obs-add" onClick={() => inputRef.current && inputRef.current.click()}>
-          <span className="obs-add-plus">+</span>
-          <span className="obs-add-txt">Adicionar print</span>
-        </button>
-      </div>
-      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-        onChange={(e) => { onAdd(e.target.files); e.target.value = ''; }} />
-    </div>
-  );
-}
-
 function SelectField({ label, value, options, onChange, placeholder }) {
   return (
     <label className="field field-wide">
@@ -579,6 +586,54 @@ function SelectField({ label, value, options, onChange, placeholder }) {
         <span className="affix affix-r sel-caret">▾</span>
       </div>
     </label>
+  );
+}
+
+// Dropdown customizado (mesma mecânica/estética do calendário: popup escuro,
+// acento verde, clique-fora/Esc). options = [{ value, label }].
+function SelectMenu({ value, options, onChange, ariaLabel }) {
+  const [open, setOpen] = useState(false);
+  const trigRef = useRef(null);
+  const popRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (popRef.current && !popRef.current.contains(e.target) && trigRef.current && !trigRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    const onScroll = () => setOpen(false);
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); window.removeEventListener('scroll', onScroll, true); };
+  }, [open]);
+  React.useLayoutEffect(() => {
+    if (!open || !popRef.current || !trigRef.current) return;
+    const t = trigRef.current.getBoundingClientRect();
+    const p = popRef.current;
+    p.style.minWidth = t.width + 'px';
+    const pw = p.offsetWidth, ph = p.offsetHeight;
+    let left = t.left;
+    if (left + pw > window.innerWidth - 8) left = Math.max(8, t.right - pw);
+    let top = t.bottom + 6;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, t.top - 6 - ph);
+    p.style.left = left + 'px'; p.style.top = top + 'px';
+  }, [open]);
+  const cur = options.find((o) => o.value === value);
+  return (
+    <div className="dd">
+      <button type="button" ref={trigRef} className={'dd-trigger' + (open ? ' open' : '')} onClick={() => setOpen((o) => !o)} aria-label={ariaLabel}>
+        <span className="dd-txt">{cur ? cur.label : '—'}</span>
+        <span className="dd-caret">▾</span>
+      </button>
+      {open ? (
+        <div className="dd-pop" ref={popRef}>
+          <div className="dd-menu">
+            {options.map((o) => (
+              <button type="button" key={o.value} className={'dd-opt' + (o.value === value ? ' sel' : '')} onClick={() => { onChange(o.value); setOpen(false); }}>{o.label}</button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -727,41 +782,155 @@ function StaticField({ label, value, wide }) {
   );
 }
 
-// Card de campanha (no painel) — colapsável: cabeçalho com nome + resumo, corpo
-// com as métricas. A primeira nasce aberta; as demais, recolhidas.
+// Card de campanha (no painel). Recolhida = linha densa com resumo tabular
+// (ROAS colorido vs. objetivo · investimento · ACOS); expandida = card com o grid
+// de edição. A primeira nasce aberta; as demais, recolhidas.
 function CampCard({ c, index, field, onRemove, acosTxt, tacosTxt }) {
   const [open, setOpen] = useState(index === 0);
-  const roasResumo = (c.roas && String(c.roas).trim()) ? String(c.roas).trim() + 'x' : '—';
-  const invResumo = (c.investimento && String(c.investimento).trim()) ? 'R$ ' + String(c.investimento).trim() : '';
+  const roasNum = window.campRoasNum(c);
+  const roasStr = roasNum > 0 ? roasNum.toFixed(2).replace('.', ',') + 'x' : '—';
+  const objNum = window.parseNum(c.roasObjetivo);
+  // verde se bate/supera o ROAS objetivo, vermelho se abaixo; neutro sem objetivo
+  const roasTone = (objNum > 0 && roasNum > 0) ? (roasNum >= objNum ? ' good' : ' bad') : '';
+  const invStr = (c.investimento && String(c.investimento).trim()) ? 'R$ ' + String(c.investimento).trim() : '—';
+  const stop = (e) => e.stopPropagation();
+  const eyeOn = (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+  );
+  const eyeOff = (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><path d="m2 2 20 20" /></svg>
+  );
   return (
-    <div className={'camp-card' + (c.novo ? ' is-new' : '') + (open ? ' open' : ' closed')}>
-      <div className="camp-card-top">
-        <button type="button" className="camp-toggle" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Recolher campanha' : 'Expandir campanha'}>
-          <span className={'grp-chev' + (open ? ' open' : '')}>▸</span>
-        </button>
-        <input placeholder="Nome da campanha" value={c.nome || ''} onChange={(e) => field('nome')(e.target.value)} />
+    <div className={'camp-card' + (c.novo ? ' is-new' : '') + (open ? ' open' : '') + (c.oculta ? ' hidden' : '')}>
+      <div className="camp-row" onClick={() => setOpen((o) => !o)}>
+        <span className={'camp-chev' + (open ? ' open' : '')}>▶</span>
+        {open
+          ? <input className="camp-nm-in" placeholder="Nome da campanha" value={c.nome || ''} onClick={stop} onChange={(e) => field('nome')(e.target.value)} />
+          : <span className={'camp-nm-txt' + (c.nome ? '' : ' empty')}>{c.nome || 'Sem nome'}</span>}
         {c.novo ? <span className="camp-badge">Nova</span> : null}
-        <button type="button" className="camp-del" onClick={onRemove} title="Remover campanha">×</button>
+        {c.oculta ? <span className="camp-hidden-tag">oculta</span> : null}
+        {!open ? (
+          <span className="camp-strip">
+            <span className={'cs-m' + roasTone}>ROAS<b>{roasStr}</b></span>
+            <span className="cs-m">Inv<b>{invStr}</b></span>
+            <span className="cs-m">ACOS<b>{acosTxt(c)}</b></span>
+          </span>
+        ) : null}
+        <button type="button" className={'camp-hide' + (c.oculta ? ' on' : '')} onClick={(e) => { stop(e); field('oculta')(!c.oculta); }} title={c.oculta ? 'Exibir no PDF' : 'Não exibir no PDF'} aria-label={c.oculta ? 'Exibir no PDF' : 'Não exibir no PDF'}>{c.oculta ? eyeOff : eyeOn}</button>
+        <button type="button" className="camp-del" onClick={(e) => { stop(e); onRemove(); }} title="Remover campanha (apaga o registro)">×</button>
       </div>
-      {!open ? (
-        <div className="camp-summary" onClick={() => setOpen(true)}>
-          <span>ROAS {roasResumo}</span>{invResumo ? <span className="camp-summary-sep">{invResumo}</span> : null}
-        </div>
-      ) : null}
       {open ? (
-        <React.Fragment>
+        <div className="camp-body">
           <div className="camp-grid">
             <div className="camp-f"><label>ROAS obj.</label><input value={c.roasObjetivo || ''} onChange={(e) => field('roasObjetivo')(e.target.value)} /></div>
             <div className="camp-f"><label>Orçamento R$</label><input value={c.orcamento || ''} onChange={(e) => field('orcamento')(e.target.value)} /></div>
             <div className="camp-f"><label>Invest. R$</label><input value={c.investimento || ''} onChange={(e) => field('investimento')(e.target.value)} /></div>
             <div className="camp-f"><label>Fatur. R$</label><input value={c.faturamento || ''} onChange={(e) => field('faturamento')(e.target.value)} /></div>
-            <div className="camp-f"><label>ROAS</label><input value={c.roas || ''} onChange={(e) => field('roas')(e.target.value)} /></div>
+            <div className="camp-f"><label>ROAS</label><div className="camp-ro" title="Faturamento ÷ investimento da campanha">{roasStr}</div></div>
             <div className="camp-f"><label>ACOS</label><div className="camp-ro" title="Investimento ÷ faturamento da campanha">{acosTxt(c)}</div></div>
             <div className="camp-f"><label>TACOS</label><div className="camp-ro" title="Investimento ÷ faturamento total da loja">{tacosTxt(c)}</div></div>
           </div>
           {(c.mudancas && c.mudancas.length) ? <div className="camp-chg">{c.mudancas.map((m, j) => <span key={j}>{m}</span>)}</div> : null}
-        </React.Fragment>
+        </div>
       ) : null}
+    </div>
+  );
+}
+
+// Bloco de texto: contentEditable NÃO-controlado. O conteúdo inicial é escrito UMA
+// vez (via initial.current, que nunca muda → React não reescreve o DOM a cada tecla,
+// evitando o cursor "pular"). Mudanças externas só são sincronizadas quando o bloco
+// NÃO está focado.
+function TextBlock({ block, onHtml, onFocusBlock, onPasteImages }) {
+  const ref = useRef(null);
+  const initial = useRef(block.html || '');
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    if (document.activeElement !== el && el.innerHTML !== (block.html || '')) {
+      el.innerHTML = block.html || '';
+    }
+  }, [block.html]);
+  return (
+    <div
+      ref={ref}
+      className="ob-text"
+      contentEditable
+      suppressContentEditableWarning
+      dangerouslySetInnerHTML={{ __html: initial.current }}
+      onFocus={() => onFocusBlock(block.id)}
+      onInput={(e) => onHtml(e.currentTarget.innerHTML)}
+      data-empty={!block.html ? '1' : undefined}
+      onPaste={(e) => {
+        if (!onPasteImages) return;
+        const items = (e.clipboardData && e.clipboardData.items) || [];
+        const imgs = [];
+        for (const it of items) { if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) imgs.push(f); } }
+        if (imgs.length) { e.preventDefault(); onPasteImages(imgs, block.id); }
+      }}
+    />
+  );
+}
+
+// Editor de observações por blocos (usado no form e no modal maximizado).
+function ObsEditor({ blocks, onChange, large, onAddImages, onMaximize, maximized }) {
+  const list = blocks || [];
+  const [focusId, setFocusId] = useState(null);
+  const update = (id, patch) => onChange(list.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const move = (id, dir) => {
+    const i = list.findIndex((b) => b.id === id); const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const arr = list.slice(); const [x] = arr.splice(i, 1); arr.splice(j, 0, x); onChange(arr);
+  };
+  const remove = (id) => onChange(list.filter((b) => b.id !== id));
+  const addText = () => onChange([...list, makeTextBlock('')]);
+  const toolBtn = (cmd, label, title) => (
+    <button type="button" className="ob-tool" title={title}
+      onMouseDown={(e) => { e.preventDefault(); document.execCommand(cmd, false, null); }}>{label}</button>
+  );
+  return (
+    <div className={'ob-editor' + (large ? ' ob-large' : '')}>
+      <div className="ob-toolbar">
+        {toolBtn('bold', <b>B</b>, 'Negrito')}
+        {toolBtn('italic', <i>I</i>, 'Itálico')}
+        {toolBtn('insertUnorderedList', '•', 'Lista')}
+        <span className="ob-tool-sep" />
+        <button type="button" className="ob-tool" onMouseDown={(e) => e.preventDefault()} onClick={addText}>+ Texto</button>
+        {onAddImages ? (
+          <label className="ob-tool" title="Adicionar imagem">+ Imagem
+            <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+              onChange={(e) => { onAddImages(e.target.files, focusId); e.target.value = ''; }} />
+          </label>
+        ) : null}
+        {onMaximize ? <button type="button" className="ob-tool ob-max" onClick={onMaximize} title={maximized ? 'Fechar' : 'Maximizar'} aria-label={maximized ? 'Fechar' : 'Maximizar'}>{maximized ? '✕' : '⤢'}</button> : null}
+      </div>
+      <div className="ob-blocks">
+        {list.length === 0 ? <div className="ob-empty" onClick={addText}>Clique para escrever ou cole um print…</div> : null}
+        {list.map((b, i) => (
+          <div className={'ob-block ob-' + b.type + (focusId === b.id ? ' focus' : '')} key={b.id}>
+            <div className="ob-block-bar">
+              <span className="ob-block-tag">{b.type === 'image' ? 'Imagem' : 'Texto'}</span>
+              <button type="button" className="ob-mini" title="Mover para cima" disabled={i === 0} onClick={() => move(b.id, -1)}>↑</button>
+              <button type="button" className="ob-mini" title="Mover para baixo" disabled={i === list.length - 1} onClick={() => move(b.id, 1)}>↓</button>
+              <button type="button" className="ob-mini ob-del" title="Remover" onClick={() => remove(b.id)}>✕</button>
+            </div>
+            {b.type === 'text'
+              ? <TextBlock block={b} onHtml={(html) => update(b.id, { html })} onFocusBlock={setFocusId} onPasteImages={onAddImages} />
+              : (
+                <div className="ob-imgwrap">
+                  <img className="ob-img" src={b.src} alt="" />
+                  <div className="ob-imgctl">
+                    {[['P', 35], ['M', 60], ['G', 85], ['Cheia', 100]].map(([lab, w]) => (
+                      <button type="button" key={w} className={'ob-size' + ((b.widthPct || 100) === w ? ' on' : '')} onClick={() => update(b.id, { widthPct: w })}>{lab}</button>
+                    ))}
+                    <input className="ob-slider" type="range" min="15" max="100" value={b.widthPct || 100}
+                      onChange={(e) => update(b.id, { widthPct: Math.max(15, Math.min(100, parseInt(e.target.value, 10) || 100)) })} />
+                    <span className="ob-pct">{b.widthPct || 100}%</span>
+                  </div>
+                </div>
+              )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -769,7 +938,7 @@ function CampCard({ c, index, field, onRemove, acosTxt, tacosTxt }) {
 function App() {
   const bootRef = useRef(null);
   if (bootRef.current === null) bootRef.current = consumeReportContext();
-  const [d, setD] = useState(() => bootRef.current.initialD);
+  const [d, setD] = useState(() => ensureObsBlocks(bootRef.current.initialD));
   const [link, setLink] = useState(() => bootRef.current.link);
   const [mlBusy, setMlBusy] = useState(false);
   const [mlMsg, setMlMsg] = useState(null);
@@ -814,6 +983,15 @@ function App() {
 
   const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), []);
   const setTone = useCallback((k) => (v) => setD((p) => ({ ...p, status: { ...p.status, [k]: v } })), []);
+  // observações em blocos — grava obsBlocks + espelho de texto puro em obs
+  const setObsBlocks = useCallback((blocks) => setD((p) => ({ ...p, obsBlocks: blocks, obs: blocksToPlainText(blocks) })), []);
+  const [obsMax, setObsMax] = useState(false);
+  useEffect(() => {
+    if (!obsMax) return;
+    const onKey = (e) => { if (e.key === 'Escape') setObsMax(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [obsMax]);
   const addPrev = () => setD((p) => ({ ...p, prev: [...(p.prev || []), blankPeriod((p.prev || []).length + 1)] }));
   const removePrev = (i) => setD((p) => ({ ...p, prev: (p.prev || []).filter((_, j) => j !== i) }));
   const prevField = (i) => (k) => (v) => setD((p) => { const arr = [...(p.prev || [])]; arr[i] = { ...arr[i], [k]: v }; return { ...p, prev: arr }; });
@@ -852,18 +1030,17 @@ function App() {
     return { ...p, prev: arr };
   });
 
-  const addImages = (files) => {
-    Array.from(files || []).filter((f) => f.type.startsWith('image/')).forEach((f) => {
-      resizeImage(f, (url) => setD((p) => ({ ...p, obsImages: [...(p.obsImages || []), url] })));
+  // adiciona imagens como blocos de observação (após o bloco focado, senão no fim)
+  const addObsImages = (files, afterId) => {
+    Array.from(files || []).filter((f) => f.type && f.type.startsWith('image/')).forEach((f) => {
+      resizeImage(f, (url) => setD((p) => {
+        const arr = (p.obsBlocks || []).slice();
+        const idx = afterId ? arr.findIndex((b) => b.id === afterId) : -1;
+        const block = makeImageBlock(url, 100);
+        if (idx >= 0) arr.splice(idx + 1, 0, block); else arr.push(block);
+        return { ...p, obsBlocks: arr, obs: blocksToPlainText(arr) };
+      }));
     });
-  };
-  const removeImage = (i) => setD((p) => ({ ...p, obsImages: (p.obsImages || []).filter((_, j) => j !== i) }));
-
-  const onObsPaste = (e) => {
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    const imgs = [];
-    for (const it of items) { if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) imgs.push(f); } }
-    if (imgs.length) { e.preventDefault(); addImages(imgs); }
   };
 
   useEffect(() => { try { localStorage.setItem('p4-report', JSON.stringify(d)); } catch (e) {} }, [d]);
@@ -906,7 +1083,7 @@ function App() {
 
   const reset = () => {
     if (confirm('Limpar os números do período atual? Os períodos anteriores (comparativo) são mantidos.')) {
-      setD((p) => ({ ...EMPTY, marketplace: p.marketplace, loja: p.loja, lojaTipo: p.lojaTipo, analista: p.analista, metaInvestimento: p.metaInvestimento, metaRoas: p.metaRoas, metaAcos: p.metaAcos, metaTacos: p.metaTacos, campanhasFiltro: p.campanhasFiltro || CAMP_FILTRO_DEFAULT, campanhasOrdem: p.campanhasOrdem || CAMP_ORDEM_DEFAULT, prev: p.prev || [] }));
+      setD((p) => ({ ...EMPTY, marketplace: p.marketplace, loja: p.loja, lojaTipo: p.lojaTipo, analista: p.analista, metaInvestimento: p.metaInvestimento, metaRoas: p.metaRoas, metaAcos: p.metaAcos, metaTacos: p.metaTacos, campanhasFiltro: p.campanhasFiltro || CAMP_FILTRO_DEFAULT, campanhasOrdem: p.campanhasOrdem || CAMP_ORDEM_DEFAULT, obsBlocks: [], prev: p.prev || [] }));
       setApiMsg(null);
     }
   };
@@ -1090,7 +1267,7 @@ function App() {
       try { imp = JSON.parse(reader.result); } catch (err) { alert('Arquivo inválido. Selecione um .json exportado por este gerador.'); return; }
       if (!imp || typeof imp !== 'object') { alert('Arquivo inválido.'); return; }
       const roll = confirm('Importar relatório.\n\nOK = iniciar um NOVO período (o relatório importado vira o comparativo).\nCancelar = apenas restaurar este relatório como está.');
-      setD(roll ? rollForward(imp) : fullRestore(imp));
+      setD(ensureObsBlocks(roll ? rollForward(imp) : fullRestore(imp)));
     };
     reader.readAsText(file);
   };
@@ -1110,8 +1287,10 @@ function App() {
   const filledCount = essentialKeys.filter((k) => d[k] != null && String(d[k]).trim() !== '').length;
   const progressPct = Math.round((filledCount / essentialKeys.length) * 100);
   const metaSummary = `ROAS ${d.metaRoas || '—'}x · ACOS ${d.metaAcos || '—'}% · TACOS ${d.metaTacos || '—'}%`;
-  const obsCount = (d.obsImages || []).length;
-  const obsSummary = ((d.obs && d.obs.trim()) ? 'nota' : 'sem nota') + (obsCount ? ` · ${obsCount} print${obsCount > 1 ? 's' : ''}` : '');
+  const obsBlocksArr = d.obsBlocks || [];
+  const obsImgCount = obsBlocksArr.filter((b) => b.type === 'image').length;
+  const obsHasText = obsBlocksArr.some((b) => b.type === 'text' && String(b.html || '').replace(/<[^>]+>/g, '').trim());
+  const obsSummary = (obsHasText ? 'nota' : 'sem nota') + (obsImgCount ? ` · ${obsImgCount} print${obsImgCount > 1 ? 's' : ''}` : '');
   return (
     <div className="app">
       {/* ---- left: form ---- */}
@@ -1182,45 +1361,50 @@ function App() {
             </div>
           </Section>
 
+          <Section title="Observações" collapsible summary={obsSummary} note={
+            <span className="ml-help right-open" tabIndex={0} role="button" aria-label="Como anexar prints" onClick={(e) => e.stopPropagation()}>?
+              <span className="ml-help-pop"><span className="ml-help-card">Cole (Ctrl/Cmd+V) um print nas <b>Notas</b> ou na galeria, ou clique em <b>+ Adicionar print</b> para enviar do computador.</span></span>
+            </span>
+          }>
+            {obsMax
+              ? <div className="ob-editing-note">Editando em tela cheia…</div>
+              : <ObsEditor blocks={d.obsBlocks} onChange={setObsBlocks} onAddImages={addObsImages} onMaximize={() => setObsMax(true)} />}
+          </Section>
+
           <Section title="Campanhas de Ads" collapsible note={(d.campanhas || []).length ? `${(d.campanhas || []).length} campanha(s)` : ''}>
             <div className="camp-filtros">
-              <div className="camp-filtros-head">Exibição das campanhas <span className="cf-tag">PDF</span></div>
-              <label className="cf-field cf-ordenar">
-                <span className="cf-lab">Ordenar por</span>
-                <div className="cf-in is-select">
-                  <select value={d.campanhasOrdem || 'roasDesc'} onChange={(e) => set('campanhasOrdem')(e.target.value)}>
-                    {CAMP_ORDEM_OPTS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                  </select>
-                  <span className="cf-caret">▾</span>
+              <div className="camp-filtros-head">Exibição no relatório <span className="cf-tag">PDF</span></div>
+              <div className="cf-row">
+                <span className="cf-inline-lab">Ordenar</span>
+                <div className="cf-grow">
+                  <SelectMenu ariaLabel="Ordenar campanhas por"
+                    value={d.campanhasOrdem || 'roasDesc'}
+                    options={CAMP_ORDEM_OPTS.map((o) => ({ value: o.key, label: o.label }))}
+                    onChange={(v) => set('campanhasOrdem')(v)} />
                 </div>
-              </label>
-              <div className="camp-filtros-row">
-                <label className="cf-field">
-                  <span className="cf-lab">Filtrar por</span>
-                  <div className="cf-in is-select">
-                    <select value={filtroDim} onChange={(e) => onFiltroDim(e.target.value)}>
-                      {CAMP_FILTRO_DIMS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-                    </select>
-                    <span className="cf-caret">▾</span>
-                  </div>
-                </label>
-                {!filtroDimMeta.bool ? (
-                  <label className="cf-field cf-val">
-                    <span className="cf-lab">Valor mín.</span>
-                    <div className="cf-in">
-                      {filtroDimMeta.money ? <span className="cf-affix">R$</span> : null}
-                      <input value={filtroVal} inputMode="decimal" placeholder="0,00"
-                        onChange={(e) => setFiltroVal(filtroDimMeta.money ? maskBRL(e.target.value) : e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addFiltro(); } }} />
-                      {!filtroDimMeta.money ? <span className="cf-affix r">x</span> : null}
-                    </div>
-                  </label>
-                ) : (
-                  <div className="cf-field cf-val cf-bool-note">Sem valor — clique em adicionar.</div>
-                )}
-                <button type="button" className="cf-add" onClick={addFiltro}>+ adicionar</button>
               </div>
-              {filtrosAtivos.length ? (
+              <div className="cf-row">
+                <span className="cf-inline-lab">Filtrar</span>
+                <div className="cf-dim2">
+                  <SelectMenu ariaLabel="Filtrar campanhas por"
+                    value={filtroDim}
+                    options={CAMP_FILTRO_DIMS.map((x) => ({ value: x.key, label: x.label }))}
+                    onChange={onFiltroDim} />
+                </div>
+                {!filtroDimMeta.bool ? (
+                  <div className="cf-in cf-valin">
+                    {filtroDimMeta.money ? <span className="cf-affix">R$</span> : null}
+                    <input value={filtroVal} inputMode="decimal" placeholder="0,00"
+                      onChange={(e) => setFiltroVal(filtroDimMeta.money ? maskBRL(e.target.value) : e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addFiltro(); } }} />
+                    {!filtroDimMeta.money ? <span className="cf-affix r">x</span> : null}
+                  </div>
+                ) : (
+                  <div className="cf-valin cf-boolnote">clique em +</div>
+                )}
+                <button type="button" className="cf-add" onClick={addFiltro} title="Adicionar filtro" aria-label="Adicionar filtro">+</button>
+              </div>
+              {(filtrosAtivos.length || campOcultas > 0) ? (
                 <div className="cf-chips">
                   {filtrosAtivos.map((x) => (
                     <span className="cf-chip" key={x.key}>
@@ -1228,10 +1412,8 @@ function App() {
                       <button type="button" onClick={() => removeFiltro(x.key)} aria-label="Remover filtro">×</button>
                     </span>
                   ))}
+                  {campOcultas > 0 ? <span className="cf-hidden">{campOcultas} ocultada(s) do PDF</span> : null}
                 </div>
-              ) : null}
-              {filtrosAtivos.length && campOcultas > 0 ? (
-                <div className="cf-hidden">{campOcultas} ocultada(s) do PDF</div>
               ) : null}
             </div>
             {canPullMeli ? (
@@ -1255,15 +1437,6 @@ function App() {
             ) : null}
             {!(d.campanhas || []).length ? <p style={{ fontSize: 11.5, color: 'var(--panel-mut)', margin: '2px 2px 10px' }}>Nenhuma campanha. {canPullMeli ? 'Puxe do Mercado Livre ou ' : ''}adicione manualmente.</p> : null}
             <button type="button" className="add-prev" onClick={addCampanha}>+ Adicionar campanha</button>
-          </Section>
-
-          <Section title="Observações" collapsible summary={obsSummary} note={
-            <span className="ml-help right-open" tabIndex={0} role="button" aria-label="Como anexar prints" onClick={(e) => e.stopPropagation()}>?
-              <span className="ml-help-pop"><span className="ml-help-card">Cole (Ctrl/Cmd+V) um print nas <b>Notas</b> ou na galeria, ou clique em <b>+ Adicionar print</b> para enviar do computador.</span></span>
-            </span>
-          }>
-            <Field label="Notas do período" hint="opcional" value={d.obs} onChange={set('obs')} placeholder="Destaques, alertas, próximos passos…" area wide onPaste={onObsPaste} />
-            <ObsImages images={d.obsImages || []} onAdd={addImages} onRemove={removeImage} />
           </Section>
 
           <Section title="Comparativo" collapsible note={`${(d.prev || []).length} período(s) anterior(es)`}>
@@ -1332,6 +1505,15 @@ function App() {
           options={[{ value: 'area', label: 'Área' }, { value: 'line', label: 'Linha' }, { value: 'step', label: 'Degrau' }]}
           onChange={(v) => setTweak('chartStyle', v)} />
       </TweaksPanel>
+
+      {obsMax ? (
+        <div className="ob-modal" onMouseDown={(e) => { if (e.target === e.currentTarget) setObsMax(false); }}>
+          <div className="ob-modal-card">
+            <div className="ob-modal-head"><span>Observações</span><button type="button" className="ob-tool" onClick={() => setObsMax(false)}>✕ Fechar</button></div>
+            <ObsEditor blocks={d.obsBlocks} onChange={setObsBlocks} onAddImages={addObsImages} large />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

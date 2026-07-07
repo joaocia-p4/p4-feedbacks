@@ -43,6 +43,12 @@ d.campanhasFiltro = {
   soNovas:   false, // boolean
 }
 d.campanhasOrdem = 'roasDesc'; // roasDesc | roasAsc | investDesc | investAsc | fatDesc | nome
+// por campanha (em d.campanhas[i]):
+//   c.oculta = true  → "não exibir no PDF" (botão olho); some do relatório mas
+//                      PERMANECE em d.campanhas (payload/snapshot), para o
+//                      comparativo do próximo período continuar correto.
+//   c.roas           → NÃO é mais editável; o ROAS é derivado (fat ÷ invest) e
+//                      exibido read-only, como ACOS/TACOS.
 ```
 
 Constante default em `app.jsx`:
@@ -250,6 +256,12 @@ Adicionar um limiar vazio/zero é no-op (não cria chip); `soNovas` sempre aplic
   default `roasDesc`), também salvo por relatório.
 - Ocultadas no PDF: **somem sem nota** (transparência fica só no formulário via a
   dica de contagem).
+- Ocultar vs. excluir: cada campanha tem um botão **"não exibir no PDF"** (olho)
+  que a esconde **mantendo o registro** — porque o comparativo do próximo período
+  é montado a partir do snapshot de campanhas salvo no payload; excluir apagaria
+  o registro e quebraria a comparação. O × (excluir) continua para remover de fato
+  entradas erradas.
+- ROAS por campanha passa a ser **derivado** (fat ÷ invest), read-only.
 - Abordagem: **A** (limiares + toggle), preferida sobre presets (B) e construtor
   de regras (C).
 

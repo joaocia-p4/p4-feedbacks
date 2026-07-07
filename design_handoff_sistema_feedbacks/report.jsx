@@ -469,8 +469,11 @@ function campRoasNum(c) {
 function campanhaTemConteudo(c) {
   return String(c.nome || '').trim() || String(c.investimento || '').trim();
 }
-// filtros do usuário (investimento/ROAS mínimos, só novas/alteradas) — combináveis
+// filtros do usuário (investimento/ROAS mínimos, só novas/alteradas) — combináveis.
+// Campanha marcada como "não exibir" (c.oculta) sai do PDF mas continua no registro
+// (payload/snapshot), para o comparativo do próximo período continuar correto.
 function campanhaPassaFiltro(c, filtro) {
+  if (c.oculta) return false;
   if (!filtro) return true;
   const invMin = parseNum(filtro.investMin);
   if (invMin > 0 && parseNum(c.investimento) < invMin) return false;
@@ -660,25 +663,111 @@ function ReportReputation({ rep }) {
   );
 }
 
+// ---------- observações em blocos (texto/imagem) ----------
+// DIV entra porque o contentEditable usa <div> para cada linha nova (Enter)
+const OBS_ALLOWED = { P: 1, DIV: 1, BR: 1, B: 1, STRONG: 1, I: 1, EM: 1, UL: 1, LI: 1 };
+function sanitizeObsHtml(html) {
+  if (typeof document === 'undefined') return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html || '');
+  const walk = (node) => {
+    Array.from(node.childNodes).forEach((child) => {
+      if (child.nodeType === 1) {
+        if (!OBS_ALLOWED[child.tagName]) {
+          while (child.firstChild) node.insertBefore(child.firstChild, child);
+          node.removeChild(child); return;
+        }
+        Array.from(child.attributes).forEach((a) => child.removeAttribute(a.name));
+        walk(child);
+      }
+    });
+  };
+  walk(tmp);
+  return tmp.innerHTML;
+}
+function ObsBlockView({ block }) {
+  if (block.type === 'image') return <img className="ra-obs-img" src={block.src} alt="" style={{ width: (block.widthPct || 100) + '%' }} />;
+  return <div className="ra-obs-text" dangerouslySetInnerHTML={{ __html: sanitizeObsHtml(block.html) }} />;
+}
+function ObsBlocksRender({ blocks }) {
+  return <div className="ra-obs">{(blocks || []).map((b) => <ObsBlockView key={b.id} block={b} />)}</div>;
+}
+// cache de proporção (altura/largura) das imagens, para estimar a altura no empacotamento
+const _obsImgAspect = {};
+function packObsBlocks(blocks, measurer, colW, firstMax, contMax) {
+  const pages = []; let cur = []; let h = 0; let max = firstMax;
+  const bh = (b) => {
+    if (b.type === 'image') {
+      const ratio = _obsImgAspect[b.src] || 0.6;
+      return colW * ((b.widthPct || 100) / 100) * ratio + 10;
+    }
+    measurer.innerHTML = '';
+    const el = document.createElement('div'); el.className = 'ra-obs-text'; el.innerHTML = sanitizeObsHtml(b.html);
+    measurer.appendChild(el);
+    return measurer.offsetHeight + 10;
+  };
+  (blocks || []).forEach((b) => {
+    const hb = bh(b);
+    if (cur.length && h + hb > max) { pages.push(cur); cur = []; h = 0; max = contMax; }
+    cur.push(b); h += hb;
+  });
+  if (cur.length) pages.push(cur);
+  return pages.length ? pages : [[]];
+}
+
 // ---------- LAYOUT A — Clássico ----------
 function ReportA({ d }) {
   d = withCalc(d);
   const pctAds = pctOf(d.receitaAds, d.faturamento);
   const invMeta = parseNum(d.metaInvestimento);
   const invPct = invMeta > 0 ? Math.min(100, (parseNum(d.investimento) / invMeta) * 100) : 0;
+  const useBlocks = Array.isArray(d.obsBlocks);
+  const obsBlocks = d.obsBlocks || [];
   const imgs = d.obsImages || [];
   const obsText = (d.obs && d.obs.trim()) ? d.obs : '';
   const reportRef = React.useRef(null);
   const obsBodyRef = React.useRef(null);
   const measureRef = React.useRef(null);
-  const [obsPages, setObsPages] = React.useState(obsText ? [obsText] : ['']);
+  const [imgTick, setImgTick] = React.useState(0);
+  const [obsPages, setObsPages] = React.useState(() => useBlocks ? (obsBlocks.length ? [obsBlocks] : []) : (obsText ? [obsText] : ['']));
+  const obsKey = useBlocks ? JSON.stringify(obsBlocks.map((b) => [b.type, b.id, b.widthPct, (b.html || '').length])) : obsText;
   React.useLayoutEffect(() => {
-    if (!obsText) { setObsPages(['']); return; }
     const measurer = measureRef.current, body = obsBodyRef.current;
+    const PAGE_H = 1123;
+    if (useBlocks) {
+      if (!obsBlocks.length) { setObsPages([]); return; }
+      if (!measurer || !body) return;
+      const recompute = () => {
+        const colW = body.offsetWidth;
+        measurer.style.width = colW + 'px';
+        let pending = 0;
+        obsBlocks.forEach((b) => {
+          if (b.type === 'image' && _obsImgAspect[b.src] == null) {
+            pending++;
+            const im = new Image();
+            im.onload = () => { _obsImgAspect[b.src] = im.naturalHeight / (im.naturalWidth || 1); setImgTick((t) => t + 1); };
+            im.onerror = () => { _obsImgAspect[b.src] = 0.6; setImgTick((t) => t + 1); };
+            im.src = b.src;
+          }
+        });
+        if (pending) { setObsPages([obsBlocks]); return; } // mostra tudo numa página enquanto as imagens carregam; setImgTick re-dispara o efeito
+        const bodyTop = body.offsetTop;
+        const avail = Math.max(300, PAGE_H - bodyTop - 30 - 50 - 20);
+        setObsPages(packObsBlocks(obsBlocks, measurer, colW, avail, PAGE_H - 120));
+      };
+      recompute();
+      const raf = requestAnimationFrame(recompute);
+      const t = setTimeout(recompute, 250);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(recompute);
+      const mo = new MutationObserver(recompute);
+      mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+      return () => { cancelAnimationFrame(raf); clearTimeout(t); mo.disconnect(); };
+    }
+    // ---- legado (texto puro) ----
+    if (!obsText) { setObsPages(['']); return; }
     if (!measurer || !body) return;
     const recompute = () => {
       measurer.style.width = body.offsetWidth + 'px';
-      const PAGE_H = 1123;
       const bodyTop = body.offsetTop;
       const avail = Math.max(300, PAGE_H - bodyTop - 30 - 50 - 20);
       const pages = splitObs(obsText, measurer, avail, avail);
@@ -691,8 +780,11 @@ function ReportA({ d }) {
     const mo = new MutationObserver(recompute);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     return () => { cancelAnimationFrame(raf); clearTimeout(t); mo.disconnect(); };
-  }, [obsText]);
-  const multiObs = obsPages.length > 1;
+  }, [useBlocks, obsKey, obsText, imgTick]);
+  // fallback: se há blocos mas a paginação ainda não rodou (obsPages vazio), renderiza
+  // tudo numa página — garante que o obsBodyRef exista para o efeito medir e paginar.
+  const obsRenderPages = (useBlocks && !obsPages.length && obsBlocks.length) ? [obsBlocks] : obsPages;
+  const multiObs = obsRenderPages.length > 1;
   const raFooter = (
     <footer className="ra-foot">
       <span className="ra-foot-mid">Método P4 · Performance que move o seu negócio</span>
@@ -800,7 +892,7 @@ function ReportA({ d }) {
         {raFooter}
       </div>
 
-      {(obsText || imgs.length) ? obsPages.map((chunk, idx, arr) => {
+      {(useBlocks ? obsBlocks.length > 0 : (obsText || imgs.length)) ? obsRenderPages.map((chunk, idx, arr) => {
         const last = idx === arr.length - 1;
         const multi = arr.length > 1;
         return (
@@ -808,8 +900,8 @@ function ReportA({ d }) {
             {raHeader}
             <div className="ra-sec-head"><span className="dot"></span>Observações{multi ? <em> ({idx + 1}/{arr.length})</em> : null}</div>
             <div className="ra-notes-body" ref={idx === 0 ? obsBodyRef : null}>
-              {chunk ? <p className="ra-notes-text">{chunk}</p> : null}
-              {last ? obsImgsEl : null}
+              {useBlocks ? <ObsBlocksRender blocks={chunk} /> : (chunk ? <p className="ra-notes-text">{chunk}</p> : null)}
+              {(!useBlocks && last) ? obsImgsEl : null}
             </div>
             {raFooter}
           </div>
@@ -902,7 +994,9 @@ function ReportB({ d }) {
 
         <section className="rb-notes">
           <span className="rbn-cap">Observações</span>
-          <p>{d.obs || 'Sem observações para este período.'}</p>
+          {Array.isArray(d.obsBlocks)
+            ? (d.obsBlocks.length ? <ObsBlocksRender blocks={d.obsBlocks} /> : <p>Sem observações para este período.</p>)
+            : <p>{d.obs || 'Sem observações para este período.'}</p>}
         </section>
 
         <footer className="rb-foot">
