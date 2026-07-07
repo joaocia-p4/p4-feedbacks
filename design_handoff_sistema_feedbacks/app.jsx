@@ -44,6 +44,25 @@ function readableInk(hex) {
 const MARKETPLACES = ['Mercado Livre', 'Shopee', 'Magalu', 'Amazon', 'Tiktok'];
 const METRIC_KEYS = ['faturamento', 'vendas', 'receitaAds', 'vendasAds', 'investimento', 'roas', 'acos', 'tacos'];
 
+// Filtros das campanhas no relatório (por relatório, salvos no payload). O seletor
+// "Filtrar por" + chips é só uma camada de UI sobre estes três campos.
+const CAMP_FILTRO_DEFAULT = { investMin: '', roasMin: '', soNovas: false };
+const CAMP_FILTRO_DIMS = [
+  { key: 'investMin', label: 'Investimento mínimo', money: true, chip: (v) => `Invest ≥ R$ ${v}` },
+  { key: 'roasMin', label: 'ROAS mínimo', money: false, chip: (v) => `ROAS ≥ ${v}x` },
+  { key: 'soNovas', label: 'Só novas/alteradas', bool: true, chip: () => 'Só novas/alteradas' },
+];
+// Ordenação das campanhas no relatório (default: ROAS maior → menor).
+const CAMP_ORDEM_DEFAULT = 'roasDesc';
+const CAMP_ORDEM_OPTS = [
+  { key: 'roasDesc', label: 'ROAS (maior → menor)' },
+  { key: 'roasAsc', label: 'ROAS (menor → maior)' },
+  { key: 'investDesc', label: 'Investimento (maior → menor)' },
+  { key: 'investAsc', label: 'Investimento (menor → maior)' },
+  { key: 'fatDesc', label: 'Faturamento (maior → menor)' },
+  { key: 'nome', label: 'Nome (A → Z)' },
+];
+
 // BRL input mask — treats typed digits as cents → "1.234,56"
 function maskBRL(v) {
   let s = String(v).replace(/\D/g, '');
@@ -91,13 +110,16 @@ const DEFAULTS = {
   roas: '5,02',
   acos: '19,91',
   tacos: '14,32',
-  metaInvestimento: '20,00',
-  metaRoas: '4,00',
-  metaAcos: '20,00',
-  metaTacos: '15,00',
+  // metas vêm SEMPRE do cadastro do cliente (ctx.metas); nunca hardcoded aqui
+  metaInvestimento: '',
+  metaRoas: '',
+  metaAcos: '',
+  metaTacos: '',
   obs: '',
   obsImages: [],
   status: METRIC_KEYS.reduce((a, k) => (a[k] = 'pos', a), {}),
+  campanhasFiltro: { investMin: '', roasMin: '', soNovas: false },
+  campanhasOrdem: 'roasDesc',
   prev: [
     { label: '', periodoIni: '2026-04-30', periodoFim: '2026-05-06', faturamento: '98,00', vendas: '2', receitaAds: '71,00', vendasAds: '2', investimento: '15,40', roas: '4,61', acos: '21,69', tacos: '15,71' },
     { label: '', periodoIni: '2026-04-23', periodoFim: '2026-04-29', faturamento: '84,00', vendas: '2', receitaAds: '60,00', vendasAds: '1', investimento: '14,10', roas: '4,26', acos: '23,50', tacos: '16,79' },
@@ -134,6 +156,8 @@ function rollForward(imp) {
     metaAcos: imp.metaAcos || '', metaTacos: imp.metaTacos || '',
     periodoIni: nIni, periodoFim: nFim,
     status: { ...EMPTY.status, ...(imp.status || {}) },
+    campanhasFiltro: imp.campanhasFiltro || CAMP_FILTRO_DEFAULT,
+    campanhasOrdem: imp.campanhasOrdem || CAMP_ORDEM_DEFAULT,
     prev: [newPrev, ...(imp.prev || [])],
   };
 }
@@ -161,13 +185,16 @@ const EMPTY = {
   roas: '',
   acos: '',
   tacos: '',
-  metaInvestimento: '20,00',
-  metaRoas: '4,00',
-  metaAcos: '20,00',
-  metaTacos: '15,00',
+  // metas vêm SEMPRE do cadastro do cliente (ctx.metas); nunca hardcoded aqui
+  metaInvestimento: '',
+  metaRoas: '',
+  metaAcos: '',
+  metaTacos: '',
   obs: '',
   obsImages: [],
   status: METRIC_KEYS.reduce((a, k) => (a[k] = 'pos', a), {}),
+  campanhasFiltro: { investMin: '', roasMin: '', soNovas: false },
+  campanhasOrdem: 'roasDesc',
   prev: [],
 };
 
@@ -646,13 +673,15 @@ function consumeReportContext() {
   const me = currentUserName();
   // periodicidade sempre Semanal; ROAS/ACOS/TACOS sempre automáticos.
   const NORM = { periodicidade: 'Semanal', roasAuto: true, acosAuto: true, tacosAuto: true };
-  // As metas vêm SEMPRE do cadastro do cliente (ctx.metas), nunca do JSON antigo.
+  // As metas vêm SEMPRE do cadastro do cliente (ctx.metas), nunca do JSON antigo
+  // nem de default hardcoded. Valor verbatim: vazio ("") = sem meta → o indicador
+  // correspondente esconde o alvo/nota no relatório.
   const applyMetas = (obj, m) => (!m ? obj : {
     ...obj,
-    metaInvestimento: m.metaInvestimento || obj.metaInvestimento,
-    metaRoas: m.metaRoas || obj.metaRoas,
-    metaAcos: m.metaAcos || obj.metaAcos,
-    metaTacos: m.metaTacos || obj.metaTacos,
+    metaInvestimento: m.metaInvestimento || '',
+    metaRoas: m.metaRoas || '',
+    metaAcos: m.metaAcos || '',
+    metaTacos: m.metaTacos || '',
   });
 
   // abrir um relatório existente (visualizar/imprimir) — metas atuais do cadastro
@@ -695,6 +724,45 @@ function StaticField({ label, value, wide }) {
         <input value={value} readOnly tabIndex={-1} style={{ cursor: 'default' }} />
       </div>
     </label>
+  );
+}
+
+// Card de campanha (no painel) — colapsável: cabeçalho com nome + resumo, corpo
+// com as métricas. A primeira nasce aberta; as demais, recolhidas.
+function CampCard({ c, index, field, onRemove, acosTxt, tacosTxt }) {
+  const [open, setOpen] = useState(index === 0);
+  const roasResumo = (c.roas && String(c.roas).trim()) ? String(c.roas).trim() + 'x' : '—';
+  const invResumo = (c.investimento && String(c.investimento).trim()) ? 'R$ ' + String(c.investimento).trim() : '';
+  return (
+    <div className={'camp-card' + (c.novo ? ' is-new' : '') + (open ? ' open' : ' closed')}>
+      <div className="camp-card-top">
+        <button type="button" className="camp-toggle" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Recolher campanha' : 'Expandir campanha'}>
+          <span className={'grp-chev' + (open ? ' open' : '')}>▸</span>
+        </button>
+        <input placeholder="Nome da campanha" value={c.nome || ''} onChange={(e) => field('nome')(e.target.value)} />
+        {c.novo ? <span className="camp-badge">Nova</span> : null}
+        <button type="button" className="camp-del" onClick={onRemove} title="Remover campanha">×</button>
+      </div>
+      {!open ? (
+        <div className="camp-summary" onClick={() => setOpen(true)}>
+          <span>ROAS {roasResumo}</span>{invResumo ? <span className="camp-summary-sep">{invResumo}</span> : null}
+        </div>
+      ) : null}
+      {open ? (
+        <React.Fragment>
+          <div className="camp-grid">
+            <div className="camp-f"><label>ROAS obj.</label><input value={c.roasObjetivo || ''} onChange={(e) => field('roasObjetivo')(e.target.value)} /></div>
+            <div className="camp-f"><label>Orçamento R$</label><input value={c.orcamento || ''} onChange={(e) => field('orcamento')(e.target.value)} /></div>
+            <div className="camp-f"><label>Invest. R$</label><input value={c.investimento || ''} onChange={(e) => field('investimento')(e.target.value)} /></div>
+            <div className="camp-f"><label>Fatur. R$</label><input value={c.faturamento || ''} onChange={(e) => field('faturamento')(e.target.value)} /></div>
+            <div className="camp-f"><label>ROAS</label><input value={c.roas || ''} onChange={(e) => field('roas')(e.target.value)} /></div>
+            <div className="camp-f"><label>ACOS</label><div className="camp-ro" title="Investimento ÷ faturamento da campanha">{acosTxt(c)}</div></div>
+            <div className="camp-f"><label>TACOS</label><div className="camp-ro" title="Investimento ÷ faturamento total da loja">{tacosTxt(c)}</div></div>
+          </div>
+          {(c.mudancas && c.mudancas.length) ? <div className="camp-chg">{c.mudancas.map((m, j) => <span key={j}>{m}</span>)}</div> : null}
+        </React.Fragment>
+      ) : null}
+    </div>
   );
 }
 
@@ -760,6 +828,22 @@ function App() {
     const r = window.parseNum(c.roas); return r > 0 ? (100 / r).toFixed(1).replace('.', ',') + '%' : '—';
   };
   const campTacosTxt = (c) => { const t = window.calcTacos({ investimento: c.investimento, faturamento: d.faturamento }); return t == null ? '—' : t.toFixed(1).replace('.', ',') + '%'; };
+  // filtros das campanhas no relatório (seletor "Filtrar por" + chips) — camada de UI
+  // sobre d.campanhasFiltro { investMin, roasMin, soNovas }
+  const campFiltro = d.campanhasFiltro || CAMP_FILTRO_DEFAULT;
+  const setCampFiltro = (k) => (v) => setD((p) => ({ ...p, campanhasFiltro: { ...(p.campanhasFiltro || CAMP_FILTRO_DEFAULT), [k]: v } }));
+  const [filtroDim, setFiltroDim] = useState('investMin');
+  const [filtroVal, setFiltroVal] = useState('');
+  const filtroDimMeta = CAMP_FILTRO_DIMS.find((x) => x.key === filtroDim) || CAMP_FILTRO_DIMS[0];
+  const onFiltroDim = (k) => { setFiltroDim(k); const dm = CAMP_FILTRO_DIMS.find((x) => x.key === k); setFiltroVal(dm && dm.bool ? '' : (campFiltro[k] || '')); };
+  const addFiltro = () => {
+    if (filtroDimMeta.bool) { setCampFiltro('soNovas')(true); return; }
+    if (window.parseNum(filtroVal) > 0) { setCampFiltro(filtroDimMeta.key)(filtroVal); setFiltroVal(''); }
+  };
+  const removeFiltro = (key) => setCampFiltro(key)(key === 'soNovas' ? false : '');
+  const filtrosAtivos = CAMP_FILTRO_DIMS.filter((x) => (x.bool ? campFiltro.soNovas : window.parseNum(campFiltro[x.key]) > 0));
+  const campComConteudo = (d.campanhas || []).filter((c) => window.campanhaTemConteudo(c));
+  const campOcultas = campComConteudo.length - campComConteudo.filter((c) => window.campanhaPassaFiltro(c, campFiltro)).length;
   // update a period's dates and auto-reorder the list (most recent first)
   const prevDates = (i) => (ini, fim) => setD((p) => {
     const arr = [...(p.prev || [])];
@@ -822,7 +906,7 @@ function App() {
 
   const reset = () => {
     if (confirm('Limpar os números do período atual? Os períodos anteriores (comparativo) são mantidos.')) {
-      setD((p) => ({ ...EMPTY, marketplace: p.marketplace, loja: p.loja, lojaTipo: p.lojaTipo, analista: p.analista, metaInvestimento: p.metaInvestimento, metaRoas: p.metaRoas, metaAcos: p.metaAcos, metaTacos: p.metaTacos, prev: p.prev || [] }));
+      setD((p) => ({ ...EMPTY, marketplace: p.marketplace, loja: p.loja, lojaTipo: p.lojaTipo, analista: p.analista, metaInvestimento: p.metaInvestimento, metaRoas: p.metaRoas, metaAcos: p.metaAcos, metaTacos: p.metaTacos, campanhasFiltro: p.campanhasFiltro || CAMP_FILTRO_DEFAULT, campanhasOrdem: p.campanhasOrdem || CAMP_ORDEM_DEFAULT, prev: p.prev || [] }));
       setApiMsg(null);
     }
   };
@@ -839,6 +923,19 @@ function App() {
 
   // Puxar os números do período direto do Mercado Livre (Pedidos + Ads).
   const canPullMeli = !!(link && loggedIn && link.marketplace === 'Mercado Livre');
+
+  // Reputação da conta ML — buscada só quando a conta está CONECTADA. Congela em
+  // d.reputacao (entra no payload salvo), então o PDF mostra a reputação de quando
+  // foi gerado. Conta não conectada / erro → mantém o que houver; sem reputacao a
+  // seção some do relatório.
+  useEffect(() => {
+    if (!canPullMeli || !window.P4_API) return;
+    let cancel = false;
+    window.P4_API.meliReputation(link.accId)
+      .then((rep) => { if (!cancel && rep && rep.ok) setD((p) => ({ ...p, reputacao: rep })); })
+      .catch(() => {}); // não conectada / falha → não sobrescreve
+    return () => { cancel = true; };
+  }, [canPullMeli, link && link.accId]); // eslint-disable-line react-hooks/exhaustive-deps
   const pullFromMeli = async () => {
     if (!d.periodoIni || !d.periodoFim) { setMlMsg({ err: true, t: 'Defina o início e o fim do período primeiro.' }); return; }
     setMlBusy(true); setMlMsg(null);
@@ -1086,6 +1183,57 @@ function App() {
           </Section>
 
           <Section title="Campanhas de Ads" collapsible note={(d.campanhas || []).length ? `${(d.campanhas || []).length} campanha(s)` : ''}>
+            <div className="camp-filtros">
+              <div className="camp-filtros-head">Exibição das campanhas <span className="cf-tag">PDF</span></div>
+              <label className="cf-field cf-ordenar">
+                <span className="cf-lab">Ordenar por</span>
+                <div className="cf-in is-select">
+                  <select value={d.campanhasOrdem || 'roasDesc'} onChange={(e) => set('campanhasOrdem')(e.target.value)}>
+                    {CAMP_ORDEM_OPTS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                  <span className="cf-caret">▾</span>
+                </div>
+              </label>
+              <div className="camp-filtros-row">
+                <label className="cf-field">
+                  <span className="cf-lab">Filtrar por</span>
+                  <div className="cf-in is-select">
+                    <select value={filtroDim} onChange={(e) => onFiltroDim(e.target.value)}>
+                      {CAMP_FILTRO_DIMS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+                    </select>
+                    <span className="cf-caret">▾</span>
+                  </div>
+                </label>
+                {!filtroDimMeta.bool ? (
+                  <label className="cf-field cf-val">
+                    <span className="cf-lab">Valor mín.</span>
+                    <div className="cf-in">
+                      {filtroDimMeta.money ? <span className="cf-affix">R$</span> : null}
+                      <input value={filtroVal} inputMode="decimal" placeholder="0,00"
+                        onChange={(e) => setFiltroVal(filtroDimMeta.money ? maskBRL(e.target.value) : e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); addFiltro(); } }} />
+                      {!filtroDimMeta.money ? <span className="cf-affix r">x</span> : null}
+                    </div>
+                  </label>
+                ) : (
+                  <div className="cf-field cf-val cf-bool-note">Sem valor — clique em adicionar.</div>
+                )}
+                <button type="button" className="cf-add" onClick={addFiltro}>+ adicionar</button>
+              </div>
+              {filtrosAtivos.length ? (
+                <div className="cf-chips">
+                  {filtrosAtivos.map((x) => (
+                    <span className="cf-chip" key={x.key}>
+                      {x.bool ? x.chip() : x.chip(campFiltro[x.key])}
+                      <button type="button" onClick={() => removeFiltro(x.key)} aria-label="Remover filtro">×</button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {filtrosAtivos.length && campOcultas > 0 ? (
+                <div className="cf-hidden">{campOcultas} ocultada(s) do PDF</div>
+              ) : null}
+            </div>
             {canPullMeli ? (
               <div style={{ marginBottom: 12 }}>
                 <button type="button" onClick={pullCampaigns} disabled={campBusy}
@@ -1100,23 +1248,7 @@ function App() {
               <p className="camp-cmp-note">Comparado com o período anterior · {brShort(d.campanhasMeta.comparadoCom.periodoIni)}–{brShort(d.campanhasMeta.comparadoCom.periodoFim)}</p>
             ) : null}
             {(d.campanhas || []).map((c, i) => (
-              <div className={'camp-card' + (c.novo ? ' is-new' : '')} key={i}>
-                <div className="camp-card-top">
-                  <input placeholder="Nome da campanha" value={c.nome || ''} onChange={(e) => campField(i)('nome')(e.target.value)} />
-                  {c.novo ? <span className="camp-badge">Nova</span> : null}
-                  <button type="button" className="camp-del" onClick={() => removeCampanha(i)} title="Remover campanha">×</button>
-                </div>
-                <div className="camp-grid">
-                  <div className="camp-f"><label>ROAS obj.</label><input value={c.roasObjetivo || ''} onChange={(e) => campField(i)('roasObjetivo')(e.target.value)} /></div>
-                  <div className="camp-f"><label>Orçamento R$</label><input value={c.orcamento || ''} onChange={(e) => campField(i)('orcamento')(e.target.value)} /></div>
-                  <div className="camp-f"><label>Invest. R$</label><input value={c.investimento || ''} onChange={(e) => campField(i)('investimento')(e.target.value)} /></div>
-                  <div className="camp-f"><label>Fatur. R$</label><input value={c.faturamento || ''} onChange={(e) => campField(i)('faturamento')(e.target.value)} /></div>
-                  <div className="camp-f"><label>ROAS</label><input value={c.roas || ''} onChange={(e) => campField(i)('roas')(e.target.value)} /></div>
-                  <div className="camp-f"><label>ACOS</label><div className="camp-ro" title="Investimento ÷ faturamento da campanha">{campAcosTxt(c)}</div></div>
-                  <div className="camp-f"><label>TACOS</label><div className="camp-ro" title="Investimento ÷ faturamento total da loja">{campTacosTxt(c)}</div></div>
-                </div>
-                {(c.mudancas && c.mudancas.length) ? <div className="camp-chg">{c.mudancas.map((m, j) => <span key={j}>{m}</span>)}</div> : null}
-              </div>
+              <CampCard key={i} c={c} index={i} field={campField(i)} onRemove={() => removeCampanha(i)} acosTxt={campAcosTxt} tacosTxt={campTacosTxt} />
             ))}
             {(d.campanhasMeta && d.campanhasMeta.removidas && d.campanhasMeta.removidas.length) ? (
               <p className="camp-cmp-note camp-rem-note">Pausadas/removidas vs. anterior: {d.campanhasMeta.removidas.map((r) => r.nome).filter(Boolean).join(', ')}</p>

@@ -133,7 +133,9 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   // admins também podem ser responsáveis por clientes (CS é só leitura, fica de fora)
   const analistas = (users || window.P4_USERS || []).filter((u) => u.papel === 'analista' || u.papel === 'admin');
   const metaStr = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : (v || ''));
-  const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '20,00', metaRoas: '4,00', metaAcos: '20,00', metaTacos: '15,00', dataEntrada: '', dataEncerramento: '', ativo: true });
+  // Metas opcionais e SEM default: conta nova nasce sem meta; se ficar vazia, o
+  // indicador correspondente não mostra alvo/nota no relatório.
+  const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '', metaRoas: '', metaAcos: '', metaTacos: '', dataEntrada: '', dataEncerramento: '', ativo: true });
 
   const [loja, setLoja] = React.useState(client ? client.loja : '');
   const [tipo, setTipo] = React.useState(client ? client.tipo : 'Loja');

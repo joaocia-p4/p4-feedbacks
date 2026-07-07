@@ -281,7 +281,7 @@ function CompareTable({ series }) {
           const prev = i > 0 ? series[i - 1] : null;
           return (
             <tr key={i} className={(s.current ? 'cur' : '') + (s.preP4 ? ' pre' : '')}>
-              <td className="plabel">{periodLabel(s, i)}{s.preP4 ? <span className="pre-tag">pré-P4</span> : null}{s.current ? <span className="cur-tag">Atual</span> : null}</td>
+              <td className="plabel"><span className="cmp-wk" title={'Semana ' + (i + 1)}>Sem. {i + 1}</span>{periodLabel(s, i)}{s.preP4 ? <span className="pre-tag">pré-P4</span> : null}{s.current ? <span className="cur-tag">Atual</span> : null}</td>
               {METRIC_DEFS.map((m) => {
                 const pc = prev ? pctChange(s[m.k], prev[m.k]) : null;
                 return (
@@ -457,8 +457,50 @@ function ComparePage({ d, variant }) {
 // total). Pagina em várias folhas A4 quando há muitas campanhas, em vez de
 // encolher tudo numa página só.
 const CAMP_ROWS_PER_PAGE = 22;
+// ROAS numérico de uma campanha: usa o valor informado; se ausente, deriva
+// faturamento/investimento. Sem dados → -1 (vai para o fim da ordenação).
+function campRoasNum(c) {
+  const r = parseNum(c.roas);
+  if (r > 0) return r;
+  const inv = parseNum(c.investimento), fat = parseNum(c.faturamento);
+  return inv > 0 && fat > 0 ? fat / inv : -1;
+}
+// filtro-base: a campanha tem conteúdo suficiente para aparecer
+function campanhaTemConteudo(c) {
+  return String(c.nome || '').trim() || String(c.investimento || '').trim();
+}
+// filtros do usuário (investimento/ROAS mínimos, só novas/alteradas) — combináveis
+function campanhaPassaFiltro(c, filtro) {
+  if (!filtro) return true;
+  const invMin = parseNum(filtro.investMin);
+  if (invMin > 0 && parseNum(c.investimento) < invMin) return false;
+  const roasMin = parseNum(filtro.roasMin);
+  if (roasMin > 0 && campRoasNum(c) < roasMin) return false;
+  if (filtro.soNovas && !(c.novo || (c.mudancas && c.mudancas.length))) return false;
+  return true;
+}
+// comparador de ordenação das campanhas (default: ROAS maior → menor)
+function campanhaCompare(ordem) {
+  const inv = (c) => parseNum(c.investimento);
+  const fat = (c) => parseNum(c.faturamento);
+  switch (ordem) {
+    case 'roasAsc': return (a, b) => campRoasNum(a) - campRoasNum(b);
+    case 'investDesc': return (a, b) => inv(b) - inv(a);
+    case 'investAsc': return (a, b) => inv(a) - inv(b);
+    case 'fatDesc': return (a, b) => fat(b) - fat(a);
+    case 'nome': return (a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+    case 'roasDesc':
+    default: return (a, b) => campRoasNum(b) - campRoasNum(a);
+  }
+}
 function CampaignsPage({ d, variant }) {
-  const all = (d.campanhas || []).filter((c) => String(c.nome || '').trim() || String(c.investimento || '').trim());
+  const filtro = d.campanhasFiltro || null;
+  // conteúdo mínimo → filtros do usuário → ordenação escolhida (default ROAS ↓)
+  const all = (d.campanhas || [])
+    .filter(campanhaTemConteudo)
+    .filter((c) => campanhaPassaFiltro(c, filtro))
+    .slice()
+    .sort(campanhaCompare(d.campanhasOrdem));
   if (!all.length) return null;
   const meta = d.campanhasMeta || {};
   const cmp = meta.comparadoCom;
@@ -556,6 +598,66 @@ function splitObs(text, measurer, firstMax, contMax) {
     i = j; max = contMax;
   }
   return pages.length ? pages : [''];
+}
+
+// ---------- reputação da conta (Mercado Livre) ----------
+// Renderiza SÓ quando d.reputacao existe (buscada no gerador só se a conta estiver
+// conectada). Congelada no payload salvo, então relatórios antigos mostram a
+// reputação de quando foram gerados.
+const REP_MEDALS = { platinum: 'MercadoLíder Platinum', gold: 'MercadoLíder Gold', silver: 'MercadoLíder' };
+function repPct(rate) { return rate == null ? '—' : (rate * 100).toFixed(1).replace('.', ',') + '%'; }
+function ReportReputation({ rep }) {
+  if (!rep || !rep.ok) return null;
+  const m = rep.metrics || {};
+  const sales = m.sales || {};
+  const canc = m.cancellations || {};
+  const claims = m.claims || {};
+  const delayed = m.delayedHandling || {};
+  const rt = (rep.transactions && rep.transactions.ratings) || {};
+  const hasRatings = !!(rt.positive || rt.neutral || rt.negative);
+  const tiles = [
+    { k: 'Vendas concluídas', v: (sales.completed || 0).toLocaleString('pt-BR'), neg: false },
+    { k: 'Cancelamentos', v: repPct(canc.rate), neg: canc.rate > 0.02 },
+    { k: 'Reclamações', v: repPct(claims.rate), neg: claims.rate > 0.02 },
+    { k: 'Envios atrasados', v: repPct(delayed.rate), neg: delayed.rate > 0.15 },
+  ];
+  return (
+    <section className="ra-sec ra-rep">
+      <div className="ra-sec-head"><span className="dot"></span>Reputação da Conta <em>· Mercado Livre</em></div>
+      <div className="rep-card">
+        <div className="rep-id">
+          <span className="rep-color" style={{ background: rep.colorHex }}></span>
+          <div>
+            <div className="rep-label">{rep.colorLabel}</div>
+            <div className="rep-sub">{REP_MEDALS[rep.powerSeller] || 'Sem medalha'}{rep.nickname ? ' · ' + rep.nickname : ''}</div>
+          </div>
+        </div>
+        <div className="rep-tiles">
+          {tiles.map((t, i) => (
+            <div className="rep-tile" key={i}>
+              <span className="rep-tile-k">{t.k}</span>
+              <span className={'rep-tile-v' + (t.neg ? ' neg' : '')}>{t.v}</span>
+            </div>
+          ))}
+        </div>
+        {hasRatings ? (
+          <div className="rep-ratings">
+            <span className="rep-ratings-cap">Qualificações dos compradores</span>
+            <div className="rep-bar">
+              <span style={{ width: ((rt.positive || 0) * 100) + '%', background: '#00a650' }}></span>
+              <span style={{ width: ((rt.neutral || 0) * 100) + '%', background: '#c9b04a' }}></span>
+              <span style={{ width: ((rt.negative || 0) * 100) + '%', background: '#e53935' }}></span>
+            </div>
+            <div className="rep-ratings-legend">
+              <span><i style={{ background: '#00a650' }}></i>{repPct(rt.positive)} pos.</span>
+              <span><i style={{ background: '#c9b04a' }}></i>{repPct(rt.neutral)} neu.</span>
+              <span><i style={{ background: '#e53935' }}></i>{repPct(rt.negative)} neg.</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 // ---------- LAYOUT A — Clássico ----------
@@ -691,6 +793,8 @@ function ReportA({ d }) {
           </div>
         </section>
 
+        {d.reputacao ? <ReportReputation rep={d.reputacao} /> : null}
+
         <div ref={measureRef} aria-hidden="true" className="ra-notes-body obs-measure" style={{ position: 'absolute', left: '-9999px', top: 0, visibility: 'hidden', pointerEvents: 'none', minHeight: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}></div>
 
         {raFooter}
@@ -779,7 +883,7 @@ function ReportB({ d }) {
             <div className={'rbi rbi-hl' + (neg(d, 'roas') ? ' is-neg' : '')}>
               <span className="rbi-cap">ROAS <Trend down={neg(d, 'roas')} /></span>
               <span className="rbi-val">{d.roas || '—'}<i>x</i></span>
-              <Bar value={d.roas} max={10} target={parseNum(d.metaRoas) || 4} isNeg={neg(d, 'roas')} />
+              <Bar value={d.roas} max={10} target={!isEmpty(d.metaRoas) ? d.metaRoas : null} isNeg={neg(d, 'roas')} />
             </div>
             <div className="rbi">
               <span className="rbi-cap">ACOS <Trend down={neg(d, 'acos')} /></span>
@@ -793,6 +897,8 @@ function ReportB({ d }) {
             </div>
           </div>
         </section>
+
+        {d.reputacao ? <ReportReputation rep={d.reputacao} /> : null}
 
         <section className="rb-notes">
           <span className="rbn-cap">Observações</span>
@@ -811,4 +917,4 @@ function ReportB({ d }) {
   );
 }
 
-Object.assign(window, { ReportA, ReportB, parseNum, METRIC_DEFS, assetUrl, calcAcos, calcTacos, calcRoas, fmtCalc, withCalc, metricIsAuto });
+Object.assign(window, { ReportA, ReportB, parseNum, METRIC_DEFS, assetUrl, calcAcos, calcTacos, calcRoas, fmtCalc, withCalc, metricIsAuto, campRoasNum, campanhaTemConteudo, campanhaPassaFiltro, campanhaCompare });
