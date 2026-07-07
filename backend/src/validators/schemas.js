@@ -6,7 +6,7 @@ const { AD_MARKETPLACES, WEEKDAYS } = require('../lib/p4');
 const TIPOS = ['Loja', 'Marca'];
 // 'cs' = Customer Success: somente leitura, enxerga todos os clientes/relatórios.
 const PAPEIS = ['admin', 'analista', 'cs'];
-const FREQS = ['Semanal', 'Quinzenal', 'Mensal'];
+const FREQS = ['Semanal', 'Mensal'];
 
 // ── auth / users ─────────────────────────────────────────────────────────────
 const loginSchema = z.object({
@@ -46,7 +46,7 @@ const agendaSchema = z
         ctx.addIssue({ code: 'custom', path: ['diaMes'], message: 'diaMes (1–28) é obrigatório para frequência Mensal.' });
       }
     } else if (!a.diaSemana) {
-      ctx.addIssue({ code: 'custom', path: ['diaSemana'], message: 'diaSemana é obrigatório para Semanal/Quinzenal.' });
+      ctx.addIssue({ code: 'custom', path: ['diaSemana'], message: 'diaSemana é obrigatório para Semanal.' });
     }
   });
 

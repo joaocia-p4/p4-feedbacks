@@ -7,7 +7,7 @@ const { notFound } = require('../lib/errors');
 const num = (v) => (v == null ? 0 : Number(v));
 
 const MINIMAL_COLS = [
-  'id', 'account_id', 'periodo_ini', 'periodo_fim', 'criado_em',
+  'id', 'account_id', 'periodo_ini', 'periodo_fim', 'criado_em', 'salvo_em',
   'faturamento', 'vendas', 'receita_ads', 'vendas_ads', 'investimento',
   'roas', 'acos', 'tacos',
 ];
@@ -31,6 +31,7 @@ function mapRow(row, metaRoasNum) {
     periodoIni: row.periodo_ini || null,
     periodoFim: row.periodo_fim || null,
     criadoEm: row.criado_em,
+    salvoEm: row.salvo_em || row.criado_em || null,
     faturamento: num(row.faturamento),
     vendas: num(row.vendas),
     receitaAds: num(row.receita_ads),

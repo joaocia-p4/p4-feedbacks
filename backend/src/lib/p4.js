@@ -36,7 +36,7 @@ const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', '
 const WD_FROM_IDX = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const JS_DOW = { Segunda: 1, Terça: 2, Quarta: 3, Quinta: 4, Sexta: 5, Sábado: 6, Domingo: 0 };
 
-const FREQUENCIES = ['Semanal', 'Quinzenal', 'Mensal'];
+const FREQUENCIES = ['Semanal', 'Mensal'];
 
 // ── Date helpers (local-time, matching the prototype) ────────────────────────
 function localISO(d) {
@@ -75,7 +75,7 @@ function addDays(d, n) {
   x.setDate(x.getDate() + n);
   return x;
 }
-// ISO-8601 week number (Quinzenal = even ISO weeks).
+// ISO-8601 week number (utilitário de datas).
 function isoWeek(d) {
   const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const day = (t.getUTCDay() + 6) % 7;
@@ -90,7 +90,6 @@ function isDueOn(agenda, isoStr) {
   const d = new Date(isoStr + 'T00:00:00');
   if (agenda.freq === 'Mensal') return d.getDate() === agenda.diaMes;
   if (WD_FROM_IDX[d.getDay()] !== agenda.diaSemana) return false;
-  if (agenda.freq === 'Quinzenal') return isoWeek(d) % 2 === 0;
   return true; // Semanal
 }
 
@@ -112,7 +111,6 @@ function prevScheduled(agenda, ref) {
     d = addDays(d, -1);
     guard++;
   }
-  if (agenda.freq === 'Quinzenal' && isoWeek(d) % 2 !== 0) d = addDays(d, -7);
   return d;
 }
 
@@ -124,6 +122,32 @@ function isOverdueBySchedule(agenda, lastSentISO, asOfISO) {
   const ps = prevScheduled(agenda, new Date(asOf + 'T00:00:00'));
   if (!ps) return false;
   return localISO(ps) > (lastSentISO || '0000-00-00');
+}
+
+// ── Regra por CICLO (Opção A) ────────────────────────────────────────────────
+// Início do ciclo atual da agenda: o dia SEGUINTE ao penúltimo envio agendado (o
+// anterior ao último que já passou). Um relatório GERADO a partir daqui cobre o
+// ciclo atual — mesmo que montado dias antes do envio (ex.: monta segunda, envia
+// sexta). `asOf` = último dia completo (ontem).
+function currentCycleStart(agenda, asOfISO) {
+  if (!agenda) return null;
+  const asOf = new Date((asOfISO || lastCompleteDayISO()) + 'T00:00:00');
+  const lastSend = prevScheduled(agenda, asOf); // último envio agendado ≤ ontem
+  if (!lastSend) return null;
+  const prevSend = prevScheduled(agenda, addDays(lastSend, -1)); // o envio anterior
+  if (!prevSend) return null;
+  return localISO(addDays(prevSend, 1));
+}
+
+// Atrasado por ciclo: NÃO existe relatório gerado dentro do ciclo atual — i.e. a
+// data de GERAÇÃO (salvo_em) do relatório mais recente é anterior ao início do
+// ciclo. Em dia enquanto houver um relatório gerado no ciclo (mesmo antes do envio)
+// ou o ciclo ainda não tiver "virado".
+function isOverdueByCycle(agenda, lastGenISO, asOfISO) {
+  const start = currentCycleStart(agenda, asOfISO);
+  if (!start) return false; // sem histórico de agenda suficiente → não cobra atraso
+  const gen = lastGenISO ? String(lastGenISO).slice(0, 10) : null;
+  return !gen || gen < start;
 }
 
 // Days between two ISO dates (asOf - lastISO), used for the ~9-day rule.
@@ -160,7 +184,7 @@ function agendaLabel(a) {
   if (a.freq === 'Mensal') return `Todo dia ${a.diaMes}`;
   const pre = a.diaSemana === 'Sábado' || a.diaSemana === 'Domingo' ? 'Todo' : 'Toda';
   const d = diaSemanaFull(a.diaSemana);
-  return a.freq === 'Quinzenal' ? `Quinzenal · ${d}` : `${pre} ${d}`;
+  return `${pre} ${d}`;
 }
 
 // ── Metric parsing & formulas (from report.jsx) ──────────────────────────────
@@ -248,6 +272,8 @@ module.exports = {
   isDueOn,
   prevScheduled,
   isOverdueBySchedule,
+  currentCycleStart,
+  isOverdueByCycle,
   daysSince,
   accountStatus,
   agendaLabel,

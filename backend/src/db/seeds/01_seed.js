@@ -33,7 +33,7 @@ const USERS = [
 const SAMPLE_AGENDAS = [
   { freq: 'Semanal', diaSemana: 'Segunda' },
   { freq: 'Semanal', diaSemana: 'Terça' },
-  { freq: 'Quinzenal', diaSemana: 'Quarta' },
+  { freq: 'Semanal', diaSemana: 'Quarta' },
   { freq: 'Semanal', diaSemana: 'Sexta' },
   { freq: 'Mensal', diaMes: 5 },
   { freq: 'Semanal', diaSemana: 'Segunda' },

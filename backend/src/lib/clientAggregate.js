@@ -10,10 +10,22 @@ function reportDate(r) {
   return String(v).slice(0, 10) || null;
 }
 
-// Shape one account for the API + compute its last date and status.
-function enrichAccount(acc, asOf) {
+// Data de GERAÇÃO (salvo_em) mais recente entre os relatórios da conta — é ela que
+// define o atraso (quando o relatório foi feito), não o fim do período.
+function maxGen(reports) {
+  let max = '';
+  for (const r of reports || []) {
+    const g = r && (r.salvoEm || r.salvo_em || r.criadoEm || r.criado_em || r.periodoFim || r.periodo_fim);
+    if (g && String(g) > max) max = String(g);
+  }
+  return max || null;
+}
+
+// Shape one account for the API + compute its last date and status (por ciclo).
+function enrichAccount(acc, asOf, agenda) {
   const reports = acc.reports || [];
-  const last = reportDate(reports[0]);
+  const last = reportDate(reports[0]); // fim do período do relatório mais recente (exibição)
+  const lastGen = maxGen(reports); // data de geração mais recente (define o atraso)
   return {
     id: acc.id,
     marketplace: acc.marketplace,
@@ -26,7 +38,8 @@ function enrichAccount(acc, asOf) {
     dataEncerramento: acc.dataEncerramento || null,
     ativo: acc.ativo === false ? false : true,
     last,
-    status: p4.accountStatus(last, asOf),
+    lastGen,
+    status: p4.isOverdueByCycle(agenda, lastGen, asOf) ? 'atrasado' : 'em-dia',
     reports,
   };
 }
@@ -36,7 +49,7 @@ function enrichAccount(acc, asOf) {
 function enrichClient(client, accounts, opts = {}) {
   // Referência do "atrasado" = último dia completo (ontem); hoje está em aberto.
   const asOf = opts.asOf || p4.lastCompleteDayISO();
-  const contas = (accounts || []).map((a) => enrichAccount(a, asOf));
+  const contas = (accounts || []).map((a) => enrichAccount(a, asOf, client.agenda));
 
   const fatLatest = contas.reduce((sum, m) => sum + (m.reports[0]?.faturamento || 0), 0);
   const roasW =
@@ -53,9 +66,10 @@ function enrichClient(client, accounts, opts = {}) {
     (a, m) => (m.last && m.last < a ? m.last : a),
     '9999-12-31'
   );
-  const overdueSched = p4.isOverdueBySchedule(client.agenda, lastWorst, asOf);
-  const status =
-    baseAtraso.some((m) => m.status === 'atrasado') || overdueSched ? 'atrasado' : 'em-dia';
+  // Status por CICLO: atrasado se QUALQUER conta ativa não gerou relatório no ciclo
+  // atual (cada conta já calculou seu status com a agenda do cliente).
+  const overdueSched = baseAtraso.some((m) => m.status === 'atrasado');
+  const status = overdueSched ? 'atrasado' : 'em-dia';
   // cliente "encerrado" só quando TODAS as contas estão inativas (derivado, não persistido)
   const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
 

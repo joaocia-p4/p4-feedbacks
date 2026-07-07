@@ -19,7 +19,7 @@ Object.assign(MK_ALIAS, {
 });
 const resolveMk = (v) => MK_ALIAS[impNorm(v)] || null;
 const resolveTipo = (v) => { const n = impNorm(v); if (!n) return 'Loja'; if (n === 'loja') return 'Loja'; if (n === 'marca') return 'Marca'; return null; };
-const resolveFreq = (v) => { const n = impNorm(v); if (!n) return 'Semanal'; if (n.indexOf('seman') === 0) return 'Semanal'; if (n.indexOf('quinz') === 0) return 'Quinzenal'; if (n.indexOf('mens') === 0) return 'Mensal'; return null; };
+const resolveFreq = (v) => { const n = impNorm(v); if (!n) return 'Semanal'; if (n.indexOf('seman') === 0) return 'Semanal'; if (n.indexOf('quinz') === 0) return 'Semanal'; if (n.indexOf('mens') === 0) return 'Mensal'; return null; };
 const resolveWeekday = (v) => { const n = impNorm(v); if (!n) return null; return IMP_WEEKDAYS.find((w) => impNorm(w) === n || impNorm(w).indexOf(n) === 0) || null; };
 const resolveStatus = (v) => { const n = impNorm(v); return (n === 'encerrado' || n === 'encerrada' || n === 'inativo' || n === 'inativa' || n === 'nao' || n === 'false' || n === '0') ? false : true; };
 
@@ -108,7 +108,7 @@ function impBuildClient(g, ctx) {
   } else { analistaId = ctx.selfUser.id; analistaNome = ctx.selfUser.nome; }
 
   const freq = resolveFreq(g.freqRaw);
-  if (freq === null) errors.push(`Frequência inválida: "${g.freqRaw}" (Semanal, Quinzenal ou Mensal)`);
+  if (freq === null) errors.push(`Frequência inválida: "${g.freqRaw}" (Semanal ou Mensal)`);
   let agenda = { freq: 'Semanal', diaSemana: 'Segunda' };
   if (freq === 'Mensal') {
     const d = parseInt(g.diaRaw, 10);
@@ -277,7 +277,7 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
               <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 10 }}>Colunas aceitas</div>
               <div style={{ fontSize: 12.3, color: 'var(--muted)', lineHeight: 1.7 }}>
-                <b style={{ color: 'var(--ink)' }}>Loja*</b>, <b style={{ color: 'var(--ink)' }}>Analista*</b> (nome ou e-mail), <b style={{ color: 'var(--ink)' }}>Marketplace*</b> ({IMP_MARKETPLACES.join(', ')}), Tipo (Loja/Marca), Conta, Meta Investimento/ROAS/ACOS/TACOS, Data entrada, Data encerramento, Status (Ativo/Encerrado), Frequência (Semanal/Quinzenal/Mensal), Dia, Observações. <b style={{ color: 'var(--ink)' }}>ID Cliente</b>/<b style={{ color: 'var(--ink)' }}>ID Conta</b> vêm da exportação — não preencha à mão.
+                <b style={{ color: 'var(--ink)' }}>Loja*</b>, <b style={{ color: 'var(--ink)' }}>Analista*</b> (nome ou e-mail), <b style={{ color: 'var(--ink)' }}>Marketplace*</b> ({IMP_MARKETPLACES.join(', ')}), Tipo (Loja/Marca), Conta, Meta Investimento/ROAS/ACOS/TACOS, Data entrada, Data encerramento, Status (Ativo/Encerrado), Frequência (Semanal/Mensal), Dia, Observações. <b style={{ color: 'var(--ink)' }}>ID Cliente</b>/<b style={{ color: 'var(--ink)' }}>ID Conta</b> vêm da exportação — não preencha à mão.
                 <div style={{ marginTop: 6 }}>* obrigatórios{!isAdmin ? ' — como analista, todos os clientes serão atribuídos a você (a coluna Analista é ignorada).' : '.'}</div>
               </div>
             </div>

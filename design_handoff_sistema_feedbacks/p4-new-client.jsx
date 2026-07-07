@@ -281,7 +281,7 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
               </div>
               <div className="sched-grid">
                 <LField label="Frequência">
-                  <Seg value={freq} options={['Semanal', 'Quinzenal', 'Mensal']} onChange={setFreq} />
+                  <Seg value={freq} options={['Semanal', 'Mensal']} onChange={setFreq} />
                 </LField>
                 {freq === 'Mensal'
                   ? (

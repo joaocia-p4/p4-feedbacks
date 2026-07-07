@@ -134,13 +134,13 @@ function agendaLabel(a) {
   if (a.freq === 'Mensal') return `Todo dia ${a.diaMes}`;
   const pre = (a.diaSemana === 'Sábado' || a.diaSemana === 'Domingo') ? 'Todo' : 'Toda';
   const d = diaSemanaFull(a.diaSemana);
-  return a.freq === 'Quinzenal' ? `Quinzenal · ${d}` : `${pre} ${d}`;
+  return `${pre} ${d}`;
 }
 function agendaShort(a) {
   if (!a) return '—';
   if (a.freq === 'Mensal') return `Dia ${a.diaMes}`;
   const plural = { Segunda: 'Segundas', 'Terça': 'Terças', Quarta: 'Quartas', Quinta: 'Quintas', Sexta: 'Sextas', 'Sábado': 'Sábados', Domingo: 'Domingos' }[a.diaSemana] || a.diaSemana;
-  return a.freq === 'Quinzenal' ? `Quinz. · ${(WEEKDAYS_SHORT[a.diaSemana] || '').toLowerCase()}` : plural;
+  return plural;
 }
 
 // "is this client's feedback due on this date?" -----------------------------------
@@ -158,7 +158,6 @@ function isDueOn(agenda, isoStr) {
   const d = new Date(isoStr + 'T00:00:00');
   if (agenda.freq === 'Mensal') return d.getDate() === agenda.diaMes;
   if (WD_FROM_IDX[d.getDay()] !== agenda.diaSemana) return false;
-  if (agenda.freq === 'Quinzenal') return isoWeek(d) % 2 === 0;
   return true; // Semanal
 }
 const P4_TODAY = localISO(new Date());
@@ -177,7 +176,6 @@ function prevScheduled(agenda, ref) {
   const target = JS_DOW[agenda.diaSemana];
   let guard = 0;
   while (d.getDay() !== target && guard < 8) { d = addDays(d, -1); guard++; }
-  if (agenda.freq === 'Quinzenal' && isoWeek(d) % 2 !== 0) d = addDays(d, -7);
   return d;
 }
 // overdue if the most recent scheduled date BEFORE asOf is newer than the last sent report
@@ -188,11 +186,29 @@ function isOverdueBySchedule(agenda, lastSentISO, asOfISO) {
   if (!ps) return false;
   return localISO(ps) > (lastSentISO || '0000-00-00');
 }
+// ── Regra por CICLO (espelho do backend lib/p4.js) ──
+// Início do ciclo atual: dia seguinte ao penúltimo envio agendado.
+function currentCycleStart(agenda, asOfISO) {
+  if (!agenda) return null;
+  const asOf = new Date((asOfISO || P4_TODAY) + 'T00:00:00');
+  const lastSend = prevScheduled(agenda, asOf);
+  if (!lastSend) return null;
+  const prevSend = prevScheduled(agenda, addDays(lastSend, -1));
+  if (!prevSend) return null;
+  return localISO(addDays(prevSend, 1));
+}
+// em dia se há relatório GERADO dentro do ciclo atual (lastGenISO = data do relatório).
+function isOverdueByCycle(agenda, lastGenISO, asOfISO) {
+  const start = currentCycleStart(agenda, asOfISO);
+  if (!start) return false;
+  const gen = lastGenISO ? String(lastGenISO).slice(0, 10) : null;
+  return !gen || gen < start;
+}
 
 const SAMPLE_AGENDAS = [
   { freq: 'Semanal', diaSemana: 'Segunda' },
   { freq: 'Semanal', diaSemana: 'Terça' },
-  { freq: 'Quinzenal', diaSemana: 'Quarta' },
+  { freq: 'Semanal', diaSemana: 'Quarta' },
   { freq: 'Semanal', diaSemana: 'Sexta' },
   { freq: 'Mensal', diaMes: 5 },
   { freq: 'Semanal', diaSemana: 'Segunda' },
@@ -207,13 +223,17 @@ const CLIENTS = RAW.map((c, ci) => {
   const roasW = contas.reduce((a, m) => a + (m.reports[0]?.roas || 0) * (m.reports[0]?.faturamento || 0), 0) / (fatLatest || 1);
   const n = contas.reduce((a, m) => a + m.reports.length, 0);
   const last = contas.reduce((a, m) => (m.last > a ? m.last : a), '0000-00-00');
+  const agenda = c.agenda || SAMPLE_AGENDAS[ci % SAMPLE_AGENDAS.length];
+  // status por CICLO (mesma regra do backend): usa a data do relatório (last) como
+  // referência de geração; asOf = último dia completo (ontem).
+  const asOfRef = localISO(addDays(new Date(P4_TODAY + 'T00:00:00'), -1));
+  contas.forEach((m) => { m.status = isOverdueByCycle(agenda, m.last, asOfRef) ? 'atrasado' : 'em-dia'; });
   // atraso considera só contas ATIVAS — marketplace encerrado não cobra relatório
   const ativas = contas.filter((m) => m.ativo !== false);
   const baseAtraso = ativas.length ? ativas : contas;
   const lastWorst = baseAtraso.reduce((a, m) => (m.last < a ? m.last : a), '9999-12-31');
-  const agenda = c.agenda || SAMPLE_AGENDAS[ci % SAMPLE_AGENDAS.length];
-  const overdueSched = isOverdueBySchedule(agenda, lastWorst, P4_TODAY);
-  const status = (baseAtraso.some((m) => m.status === 'atrasado') || overdueSched) ? 'atrasado' : 'em-dia';
+  const overdueSched = baseAtraso.some((m) => m.status === 'atrasado');
+  const status = overdueSched ? 'atrasado' : 'em-dia';
   // cliente "encerrado" só quando todas as contas estão inativas (derivado)
   const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
   return {
