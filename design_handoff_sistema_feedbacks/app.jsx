@@ -1199,12 +1199,19 @@ function App() {
         obsBlock = L.join('\n');
       }
       setD((p) => {
-        let obs = p.obs || '';
-        const prevAuto = p.campanhasObsAuto || '';
-        if (prevAuto && obs.indexOf(prevAuto) !== -1) obs = obs.replace(prevAuto, '');
-        obs = obs.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trim();
-        const newObs = obsBlock ? (obs ? obsBlock + '\n\n' + obs : obsBlock) : obs;
-        return { ...p, campanhas: novas, campanhasMeta: meta, obs: newObs, campanhasObsAuto: obsBlock };
+        // Insere o resumo como BLOCO de texto no topo das Observações (novo modelo).
+        // Remove o bloco automático anterior (por id) e preserva os blocos do analista.
+        const prevBlocks = p.obsBlocks || [];
+        const autoId = p.campanhasObsAutoId;
+        const kept = autoId ? prevBlocks.filter((b) => b.id !== autoId) : prevBlocks;
+        let obsBlocks = kept;
+        let campanhasObsAutoId = null;
+        if (obsBlock) {
+          const autoBlock = makeTextBlock(obsTextToHtml(obsBlock));
+          campanhasObsAutoId = autoBlock.id;
+          obsBlocks = [autoBlock, ...kept];
+        }
+        return { ...p, campanhas: novas, campanhasMeta: meta, obsBlocks, obs: blocksToPlainText(obsBlocks), campanhasObsAutoId };
       });
       const nNovas = novas.filter((c) => c.novo).length;
       const nMud = novas.filter((c) => c.mudancas && c.mudancas.length).length;
