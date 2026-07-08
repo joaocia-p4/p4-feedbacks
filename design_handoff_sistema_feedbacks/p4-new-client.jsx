@@ -135,18 +135,20 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   const metaStr = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : (v || ''));
   // Metas opcionais e SEM default: conta nova nasce sem meta; se ficar vazia, o
   // indicador correspondente não mostra alvo/nota no relatório.
-  const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '', metaRoas: '', metaAcos: '', metaTacos: '', dataEntrada: '', dataEncerramento: '', ativo: true });
+  const blankConta = () => ({ marketplace: '', conta: '', metaInvestimento: '', metaRoas: '', metaAcos: '', metaTacos: '', dataEntrada: '', dataEncerramento: '', ativo: true, pausado: false, motivoPausa: '' });
 
   const [loja, setLoja] = React.useState(client ? client.loja : '');
   const [tipo, setTipo] = React.useState(client ? client.tipo : 'Loja');
   const [analista, setAnalista] = React.useState(client ? client.analista : (role === 'analista' ? user.nome : ''));
   const [contas, setContas] = React.useState(client
-    ? client.contas.map((m) => ({ id: m.id, marketplace: m.marketplace, conta: m.conta || '', metaInvestimento: metaStr(m.metaInvestimento), metaRoas: metaStr(m.metaRoas), metaAcos: metaStr(m.metaAcos), metaTacos: metaStr(m.metaTacos), dataEntrada: m.dataEntrada || '', dataEncerramento: m.dataEncerramento || '', ativo: m.ativo !== false }))
+    ? client.contas.map((m) => ({ id: m.id, marketplace: m.marketplace, conta: m.conta || '', metaInvestimento: metaStr(m.metaInvestimento), metaRoas: metaStr(m.metaRoas), metaAcos: metaStr(m.metaAcos), metaTacos: metaStr(m.metaTacos), dataEntrada: m.dataEntrada || '', dataEncerramento: m.dataEncerramento || '', ativo: m.ativo !== false, pausado: m.pausado === true, motivoPausa: m.motivoPausa || '' }))
     : [blankConta()]);
   const [freq, setFreq] = React.useState(client && client.agenda ? client.agenda.freq : 'Semanal');
   const [diaSemana, setDiaSemana] = React.useState(client && client.agenda && client.agenda.diaSemana ? client.agenda.diaSemana : 'Segunda');
   const [diaMes, setDiaMes] = React.useState(client && client.agenda && client.agenda.diaMes ? String(client.agenda.diaMes) : '5');
   const [observacoes, setObservacoes] = React.useState(client ? (client.observacoes || '') : '');
+  const [situacao, setSituacao] = React.useState(client ? (client.situacao || 'ativo') : 'ativo');
+  const [motivoPausaCliente, setMotivoPausaCliente] = React.useState(client ? (client.motivoPausa || '') : '');
   const [touched, setTouched] = React.useState(false);
 
   const setConta = (i, patch) => setContas((arr) => arr.map((c, j) => (j === i ? { ...c, ...patch } : c)));
@@ -176,10 +178,14 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
         dataEntrada: c.dataEntrada || null,
         dataEncerramento: c.dataEncerramento || null,
         ativo: c.ativo !== false,
+        pausado: c.pausado === true,
+        motivoPausa: c.motivoPausa || '',
       })),
       marketplaces: validMks.map((c) => c.marketplace), // compat com o modo protótipo
       agenda: freq === 'Mensal' ? { freq, diaMes: parseInt(diaMes, 10) || 1 } : { freq, diaSemana },
       observacoes,
+      situacao,
+      motivoPausa: motivoPausaCliente,
     });
   };
 
@@ -218,6 +224,18 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
                     <span className="sel-caret">▾</span>
                   </div>
                 </LField>
+                <LField label="Situação" hint="onboarding e pausado não entram na cobrança de atraso">
+                  <Seg value={situacao === 'onboarding' ? 'Onboarding' : situacao === 'pausado' ? 'Pausado' : 'Ativo'}
+                       options={['Ativo', 'Onboarding', 'Pausado']}
+                       onChange={(v) => setSituacao(v === 'Onboarding' ? 'onboarding' : v === 'Pausado' ? 'pausado' : 'ativo')} />
+                </LField>
+                {situacao === 'pausado' ? (
+                  <LField label="Motivo da pausa" hint="opcional — por que o cliente está pausado">
+                    <div className="lf-in">
+                      <input placeholder="Ex.: contrato em renegociação" value={motivoPausaCliente} onChange={(e) => setMotivoPausaCliente(e.target.value)} />
+                    </div>
+                  </LField>
+                ) : null}
               </div>
             </div>
 
@@ -262,9 +280,20 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
                         <div className="lf-in"><input type="date" value={c.dataEncerramento || ''} onChange={(e) => setConta(i, { dataEncerramento: e.target.value })} /></div>
                       </LField>
                       <LField label="Status">
-                        <Seg value={c.ativo === false ? 'Encerrado' : 'Ativo'} options={['Ativo', 'Encerrado']} onChange={(v) => setConta(i, { ativo: v === 'Ativo' })} />
+                        <Seg
+                          value={c.ativo === false ? 'Encerrado' : (c.pausado ? 'Pausado' : 'Ativo')}
+                          options={['Ativo', 'Pausado', 'Encerrado']}
+                          onChange={(v) => setConta(i, { ativo: v !== 'Encerrado', pausado: v === 'Pausado' })}
+                        />
                       </LField>
                     </div>
+                    {c.pausado && c.ativo !== false ? (
+                      <LField label="Motivo da pausa" hint="opcional — por que esta conta está pausada">
+                        <div className="lf-in">
+                          <input placeholder="Ex.: verba pausada pelo cliente" value={c.motivoPausa || ''} onChange={(e) => setConta(i, { motivoPausa: e.target.value })} />
+                        </div>
+                      </LField>
+                    ) : null}
                     {c.marketplace === 'Mercado Livre' ? <MeliConnect accId={c.id} marketplace={c.marketplace} /> : null}
                   </div>
                 );

@@ -26,6 +26,8 @@ function enrichAccount(acc, asOf, agenda) {
   const reports = acc.reports || [];
   const last = reportDate(reports[0]); // fim do período do relatório mais recente (exibição)
   const lastGen = maxGen(reports); // data de geração mais recente (define o atraso)
+  const pausado = acc.pausado === true;
+  const overdue = p4.isOverdueByCycle(agenda, lastGen, asOf);
   return {
     id: acc.id,
     marketplace: acc.marketplace,
@@ -37,9 +39,12 @@ function enrichAccount(acc, asOf, agenda) {
     dataEntrada: acc.dataEntrada || null,
     dataEncerramento: acc.dataEncerramento || null,
     ativo: acc.ativo === false ? false : true,
+    pausado,
+    motivoPausa: acc.motivoPausa || acc.motivo_pausa || '',
     last,
     lastGen,
-    status: p4.isOverdueByCycle(agenda, lastGen, asOf) ? 'atrasado' : 'em-dia',
+    // conta pausada não cobra → status "pausado" (informativo); senão pela regra de ciclo
+    status: pausado ? 'pausado' : (overdue ? 'atrasado' : 'em-dia'),
     reports,
   };
 }
@@ -59,19 +64,33 @@ function enrichClient(client, accounts, opts = {}) {
     ) / (fatLatest || 1);
   const n = contas.reduce((sum, m) => sum + m.reports.length, 0);
   const last = contas.reduce((a, m) => (m.last && m.last > a ? m.last : a), '0000-00-00');
-  // o atraso considera só contas ATIVAS — marketplace encerrado não cobra relatório
+  // ── situação e tag do cliente ──
+  // Cobram relatório: contas ATIVAS e NÃO pausadas (encerrada/pausada não cobra).
+  const situacao = client.situacao || 'ativo';
+  const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
   const ativas = contas.filter((m) => m.ativo !== false);
-  const baseAtraso = ativas.length ? ativas : contas;
-  const lastWorst = baseAtraso.reduce(
+  const cobraveis = ativas.filter((m) => !m.pausado);
+  const pausadoAll = ativas.length > 0 && ativas.every((m) => m.pausado);
+  const pausado = situacao === 'pausado' || pausadoAll;
+  const onboarding = situacao === 'onboarding';
+  const atrasado = cobraveis.some((m) => p4.isOverdueByCycle(client.agenda, m.lastGen, asOf));
+  const hoje = p4.todayISO();
+  const precisaHoje =
+    !encerrado && !pausado && !onboarding &&
+    p4.isDueOn(client.agenda, hoje) &&
+    cobraveis.some((m) => p4.isOverdueByCycle(client.agenda, m.lastGen, hoje));
+  // precedência: Encerrado > Pausado > Onboarding > Atrasado > Enviar hoje > Em dia
+  const statusTag = encerrado ? 'encerrado'
+    : pausado ? 'pausado'
+    : onboarding ? 'onboarding'
+    : atrasado ? 'atrasado'
+    : precisaHoje ? 'hoje'
+    : 'em-dia';
+  const status = atrasado ? 'atrasado' : 'em-dia'; // compat com consumidores atuais
+  const lastWorst = (cobraveis.length ? cobraveis : ativas).reduce(
     (a, m) => (m.last && m.last < a ? m.last : a),
     '9999-12-31'
   );
-  // Status por CICLO: atrasado se QUALQUER conta ativa não gerou relatório no ciclo
-  // atual (cada conta já calculou seu status com a agenda do cliente).
-  const overdueSched = baseAtraso.some((m) => m.status === 'atrasado');
-  const status = overdueSched ? 'atrasado' : 'em-dia';
-  // cliente "encerrado" só quando TODAS as contas estão inativas (derivado, não persistido)
-  const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
 
   return {
     id: client.id,
@@ -82,6 +101,8 @@ function enrichClient(client, accounts, opts = {}) {
     agenda: client.agenda,
     criadoEm: client.criadoEm || null,
     observacoes: client.observacoes || '',
+    situacao,
+    motivoPausa: client.motivoPausa || client.motivo_pausa || '',
     contas,
     marketplaces: contas.map((m) => m.marketplace),
     fatLatest,
@@ -89,7 +110,10 @@ function enrichClient(client, accounts, opts = {}) {
     n,
     last: last === '0000-00-00' ? null : last,
     lastWorst: lastWorst === '9999-12-31' ? null : lastWorst,
-    overdueSched,
+    pausado,
+    onboarding,
+    precisaHoje,
+    statusTag,
     status,
     encerrado,
   };

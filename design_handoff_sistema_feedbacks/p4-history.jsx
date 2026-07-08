@@ -701,7 +701,7 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
               <div className="crumb"><span onClick={onBack} style={{ cursor: 'pointer' }}>Clientes</span> / Histórico</div>
               <h1>
                 {c.loja}
-                <window.StatusTag status={c.status} encerrado={c.encerrado} />
+                <window.StatusTag tag={c.statusTag} status={c.status} encerrado={c.encerrado} motivo={c.motivoPausa} />
               </h1>
               <div className="meta">
                 <span style={{ color: window.mkColor(conta.marketplace), fontWeight: 700 }}>{contaLabel(conta, idx)}</span>

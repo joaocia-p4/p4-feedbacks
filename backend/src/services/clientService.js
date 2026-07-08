@@ -26,6 +26,8 @@ function rowToClientBase(row) {
     agenda: buildAgenda(row),
     criadoEm: row.criado_em ? String(row.criado_em).slice(0, 10) : null,
     observacoes: row.observacoes || '',
+    situacao: row.situacao || 'ativo',
+    motivoPausa: row.motivo_pausa || '',
   };
 }
 function agendaColumns(agenda) {
@@ -56,6 +58,8 @@ function normalizeContas(body) {
       dataEntrada: (c.dataEntrada ?? '').trim() || null,
       dataEncerramento: (c.dataEncerramento ?? '').trim() || null,
       ativo: c.ativo === false ? false : true,
+      pausado: c.pausado === true,
+      motivoPausa: (c.motivoPausa ?? '').trim(),
     }));
   }
   return (body.marketplaces || []).map((mk) => ({
@@ -65,6 +69,8 @@ function normalizeContas(body) {
     dataEntrada: null,
     dataEncerramento: null,
     ativo: true,
+    pausado: false,
+    motivoPausa: '',
   }));
 }
 function sortAccounts(accs) {
@@ -100,6 +106,8 @@ function assembleClient(clientRow, accountRows, reportsByAccount, asOf) {
       dataEntrada: a.data_entrada ? String(a.data_entrada).slice(0, 10) : null,
       dataEncerramento: a.data_encerramento ? String(a.data_encerramento).slice(0, 10) : null,
       ativo: a.ativo === 0 || a.ativo === false ? false : true, // SQLite: 0/1
+      pausado: a.pausado === 1 || a.pausado === true, // SQLite: 0/1
+      motivoPausa: a.motivo_pausa || '',
       reports: rows.map((r) => reportService.mapRow(r, metaRoasNum)),
     };
   });
@@ -151,9 +159,16 @@ async function getEnriched(id, { full = true } = {}) {
 function normalizeStatus(s) {
   const v = String(s || '').trim().toLowerCase();
   if (v === 'em dia' || v === 'em-dia') return 'em-dia';
+  if (v === 'enviar hoje' || v === 'hoje') return 'hoje';
   if (v === 'atrasado') return 'atrasado';
+  if (v === 'pausado') return 'pausado';
+  if (v === 'onboarding') return 'onboarding';
   if (v === 'encerrado') return 'encerrado';
   return null; // 'Todos' / unknown → no status filter
+}
+// pode ser cobrado (entra em "para enviar"): não encerrado, não pausado, não onboarding
+function cobravel(c) {
+  return !c.encerrado && !c.pausado && !c.onboarding;
 }
 function applyFilters(list, filters) {
   const due = filters.due || null;
@@ -162,12 +177,10 @@ function applyFilters(list, filters) {
   const status = normalizeStatus(filters.status);
 
   let out = list.filter((c) => {
-    // encerrados nunca entram em "para enviar"
-    if (due && !(!c.encerrado && (p4.isDueOn(c.agenda, due) || c.status === 'atrasado'))) return false;
+    // pausado/onboarding/encerrado nunca entram em "para enviar"
+    if (due && !(cobravel(c) && (p4.isDueOn(c.agenda, due) || c.status === 'atrasado'))) return false;
     if (marketplace && marketplace !== 'Todos' && !c.marketplaces.includes(marketplace)) return false;
-    if (status === 'em-dia' && (c.encerrado || c.status !== 'em-dia')) return false;
-    if (status === 'atrasado' && (c.encerrado || c.status !== 'atrasado')) return false;
-    if (status === 'encerrado' && !c.encerrado) return false;
+    if (status && c.statusTag !== status) return false;
     if (q) {
       const hay =
         c.loja.toLowerCase() +
@@ -181,7 +194,7 @@ function applyFilters(list, filters) {
   });
 
   // "Para enviar": overdue clients come first.
-  if (due) out = [...out].sort((a, b) => (b.status === 'atrasado') - (a.status === 'atrasado'));
+  if (due) out = [...out].sort((a, b) => (b.statusTag === 'atrasado') - (a.statusTag === 'atrasado'));
   return out;
 }
 
@@ -217,14 +230,14 @@ async function listClients(user, filters = {}) {
   const meta = {
     asOf,
     total: enriched.length,
-    late: enriched.filter((c) => !c.encerrado && c.status === 'atrasado').length,
+    late: enriched.filter((c) => c.statusTag === 'atrasado').length,
   };
   if (filters.due) {
     meta.due = filters.due;
     meta.weekday = p4.weekdayName(filters.due);
-    meta.scheduled = enriched.filter((c) => !c.encerrado && p4.isDueOn(c.agenda, filters.due)).length;
+    meta.scheduled = enriched.filter((c) => cobravel(c) && p4.isDueOn(c.agenda, filters.due)).length;
     meta.toSend = enriched.filter(
-      (c) => !c.encerrado && (p4.isDueOn(c.agenda, filters.due) || c.status === 'atrasado')
+      (c) => cobravel(c) && (p4.isDueOn(c.agenda, filters.due) || c.status === 'atrasado')
     ).length;
   }
 
@@ -271,6 +284,8 @@ async function createClient(body, actingUser) {
       tipo: body.tipo || 'Loja',
       analista_id: analystId,
       observacoes: body.observacoes || '',
+      situacao: body.situacao || 'ativo',
+      motivo_pausa: body.motivoPausa || '',
       ...agendaColumns(agenda),
     });
     await trx('accounts').insert(
@@ -286,6 +301,8 @@ async function createClient(body, actingUser) {
         data_entrada: c.dataEntrada,
         data_encerramento: c.dataEncerramento,
         ativo: c.ativo,
+        pausado: c.pausado,
+        motivo_pausa: c.motivoPausa,
       }))
     );
   });
@@ -308,6 +325,10 @@ async function updateClient(id, body, actingUser) {
   }
   if (body.agenda) Object.assign(patch, agendaColumns(normalizeAgenda(body.agenda)));
   if (body.observacoes !== undefined) patch.observacoes = body.observacoes;
+  if (body.situacao !== undefined) {
+    patch.situacao = body.situacao;
+    patch.motivo_pausa = body.motivoPausa || '';
+  }
 
   // Only reconcile accounts when contas/marketplaces is explicitly provided.
   // Reject an empty array (a client must keep ≥1 conta) so a stray [] never
@@ -341,6 +362,8 @@ async function updateClient(id, body, actingUser) {
           data_entrada: c.dataEntrada,
           data_encerramento: c.dataEncerramento,
           ativo: c.ativo,
+          pausado: c.pausado,
+          motivo_pausa: c.motivoPausa,
         };
         if (c.id && currentIds.has(c.id)) {
           keptIds.add(c.id);

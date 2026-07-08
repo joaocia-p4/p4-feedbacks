@@ -10,18 +10,25 @@ function MkBadge({ name }) {
   );
 }
 
-function StatusTag({ status, encerrado }) {
-  if (encerrado) {
-    return (
-      <span className="status-tag closed">
-        <span className="d"></span>Encerrado
-      </span>
-    );
-  }
-  const ok = status === 'em-dia';
+// Metadados de cada tag de status: classe CSS (cor) + rótulo exibido.
+const STATUS_META = {
+  'em-dia': { cls: 'ok', label: 'Em dia' },
+  hoje: { cls: 'today', label: 'Enviar hoje' },
+  atrasado: { cls: 'late', label: 'Atrasado' },
+  pausado: { cls: 'paused', label: 'Pausado' },
+  onboarding: { cls: 'onboarding', label: 'Onboarding' },
+  encerrado: { cls: 'closed', label: 'Encerrado' },
+};
+window.P4_STATUS_META = STATUS_META;
+
+// tag = statusTag do backend (precedência já resolvida). Sem tag, deriva do legado
+// (status em-dia/atrasado + encerrado) para manter compatibilidade com o histórico.
+function StatusTag({ status, encerrado, tag, motivo }) {
+  const key = tag || (encerrado ? 'encerrado' : status === 'em-dia' ? 'em-dia' : 'atrasado');
+  const m = STATUS_META[key] || STATUS_META['em-dia'];
   return (
-    <span className={'status-tag ' + (ok ? 'ok' : 'late')}>
-      <span className="d"></span>{ok ? 'Em dia' : 'Atrasado'}
+    <span className={'status-tag ' + m.cls} title={motivo || undefined}>
+      <span className="d"></span>{m.label}
     </span>
   );
 }
@@ -29,13 +36,17 @@ function StatusTag({ status, encerrado }) {
 function MkRow({ contas }) {
   return (
     <div className="mk-row">
-      {contas.map((m) => (
-        <span key={m.id} className="mk-chip" title={m.marketplace + (m.ativo === false ? ' · encerrado' : (m.status === 'atrasado' ? ' · atrasado' : ' · em dia'))}
-              style={{ color: window.mkColor(m.marketplace), background: window.mkBg(m.marketplace) }}>
-          <span className="d" style={{ background: m.ativo === false ? 'var(--muted)' : (m.status === 'atrasado' ? 'var(--red)' : window.mkBrand(m.marketplace)) }}></span>
-          {m.marketplace}
-        </span>
-      ))}
+      {contas.map((m) => {
+        const sub = m.ativo === false ? ' · encerrado' : m.pausado ? (' · pausado' + (m.motivoPausa ? ': ' + m.motivoPausa : '')) : (m.status === 'atrasado' ? ' · atrasado' : ' · em dia');
+        const dot = m.ativo === false ? 'var(--muted)' : m.pausado ? 'var(--amber)' : (m.status === 'atrasado' ? 'var(--red)' : window.mkBrand(m.marketplace));
+        return (
+          <span key={m.id} className="mk-chip" title={m.marketplace + sub}
+                style={{ color: window.mkColor(m.marketplace), background: window.mkBg(m.marketplace) }}>
+            <span className="d" style={{ background: dot }}></span>
+            {m.marketplace}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -189,9 +200,11 @@ window.ClientCardReputation = ClientCardReputation;
 
 function ClientCard({ c, onOpen, onEdit, canManage }) {
   const I = window.Icons;
-  const isLate = !c.encerrado && c.status === 'atrasado';
+  const tag = c.statusTag || (c.encerrado ? 'encerrado' : c.status === 'atrasado' ? 'atrasado' : 'em-dia');
+  const isLate = tag === 'atrasado';
+  const dim = tag === 'pausado' || tag === 'onboarding'; // não são cobrados → cartão atenuado
   return (
-    <div className={'ccard' + (c.encerrado ? ' is-closed' : '') + (isLate ? ' late' : '')} onClick={() => onOpen(c.id)}
+    <div className={'ccard' + (c.encerrado ? ' is-closed' : '') + (isLate ? ' late' : '') + (dim ? ' is-dim' : '') + (tag === 'hoje' ? ' is-today' : '')} onClick={() => onOpen(c.id)}
       role="button" tabIndex={0} aria-label={`Abrir ${c.loja}`}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(c.id); } }}>
       <div className="cc-head">
@@ -199,7 +212,7 @@ function ClientCard({ c, onOpen, onEdit, canManage }) {
           <div className="loja">{c.loja}</div>
           <div className="an">{c.tipo} · {c.analista}</div>
         </div>
-        <StatusTag status={c.status} encerrado={c.encerrado} />
+        <StatusTag tag={tag} motivo={c.motivoPausa} />
       </div>
       <MkRow contas={c.contas} />
       <ClientCardReputation client={c} canManage={canManage} onConnect={onEdit ? () => onEdit(c.id) : null} />
@@ -233,41 +246,46 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
   const all = clients || window.P4_CLIENTS || [];
   // analista vê só os seus; admin e CS veem todos.
   const scoped = seesAll ? all : all.filter((c) => c.analista === user.nome);
+  // tag efetiva (usa statusTag do backend; deriva do legado se ausente).
+  const tagOf = (c) => c.statusTag || (c.encerrado ? 'encerrado' : c.status === 'atrasado' ? 'atrasado' : 'em-dia');
+  // "cobrável" = entra na cobrança de atraso/envio: não encerrado, não pausado, não onboarding.
+  const chargeable = (c) => { const t = tagOf(c); return t !== 'encerrado' && t !== 'pausado' && t !== 'onboarding'; };
   // encerrados continuam visíveis (mutados), mas fora das métricas de atraso/envio.
   const activeScoped = scoped.filter((c) => !c.encerrado);
   const closedN = scoped.length - activeScoped.length;
 
   const markets = (window.P4_AD_MARKETPLACES || []).filter((m) => scoped.some((c) => c.marketplaces.includes(m)));
   const mkCount = (m) => activeScoped.filter((c) => c.marketplaces.includes(m)).length;
-  // contagem "para enviar hoje" fixa no header (independe da data escolhida no toggle)
-  const dueTodayCount = scoped.filter((c) => !c.encerrado && (window.isDueOn(c.agenda, window.P4_TODAY) || c.status === 'atrasado')).length;
+  // contagem "para enviar hoje" fixa no header (independe da data escolhida no toggle);
+  // exclui pausados/onboarding, que não são cobrados.
+  const dueTodayCount = scoped.filter((c) => chargeable(c) && (window.isDueOn(c.agenda, window.P4_TODAY) || c.status === 'atrasado')).length;
   // analistas com clientes no escopo (filtro só faz sentido p/ quem vê todos)
   const analistOptions = [...new Set(scoped.map((c) => c.analista).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
 
-  const dueMatch = (c) => !c.encerrado && (window.isDueOn(c.agenda, dueDate) || c.status === 'atrasado');
+  const dueMatch = (c) => chargeable(c) && (window.isDueOn(c.agenda, dueDate) || c.status === 'atrasado');
+  const ST_MAP = { 'Em dia': 'em-dia', 'Enviar hoje': 'hoje', Atrasado: 'atrasado', Pausado: 'pausado', Onboarding: 'onboarding', Encerrado: 'encerrado' };
   let list = scoped.filter((c) => {
     if (dueOn && !dueMatch(c)) return false;
     if (seesAll && an !== 'Todos' && c.analista !== an) return false;
     if (mk !== 'Todos' && !c.marketplaces.includes(mk)) return false;
-    if (st === 'Em dia' && (c.encerrado || c.status !== 'em-dia')) return false;
-    if (st === 'Atrasado' && (c.encerrado || c.status !== 'atrasado')) return false;
-    if (st === 'Encerrado' && !c.encerrado) return false;
+    if (st !== 'Todos' && ST_MAP[st] && tagOf(c) !== ST_MAP[st]) return false;
     if (q.trim()) {
       const t = q.trim().toLowerCase();
       if (!(c.loja.toLowerCase().includes(t) || c.analista.toLowerCase().includes(t) || c.marketplaces.join(' ').toLowerCase().includes(t))) return false;
     }
     return true;
   });
-  // encerrados sempre por último; em "para enviar", atrasados primeiro
+  // encerrados sempre por último; em "para enviar", atrasados e depois "enviar hoje" primeiro
+  const dueRank = (c) => { const t = tagOf(c); return t === 'atrasado' ? 0 : t === 'hoje' ? 1 : 2; };
   list = [...list].sort((a, b) => {
     if (!!a.encerrado !== !!b.encerrado) return a.encerrado ? 1 : -1;
-    return dueOn ? (b.status === 'atrasado') - (a.status === 'atrasado') : 0;
+    return dueOn ? dueRank(a) - dueRank(b) : 0;
   });
 
   const dueCount = scoped.filter(dueMatch).length;
   const isToday = dueDate === window.P4_TODAY;
 
-  const lateN = activeScoped.filter((c) => c.status === 'atrasado').length;
+  const lateN = activeScoped.filter((c) => tagOf(c) === 'atrasado').length;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
   const firstName = (user && user.nome) ? user.nome.split(' ')[0] : '';
@@ -373,7 +391,7 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
 
           <div className="filters">
             <div className="chips">
-              {['Todos', 'Em dia', 'Atrasado', 'Encerrado'].map((s) => (
+              {['Todos', 'Em dia', 'Enviar hoje', 'Atrasado', 'Pausado', 'Onboarding', 'Encerrado'].map((s) => (
                 <button key={s} className={'chip' + (st === s ? ' on' : '')} onClick={() => setSt(s)}>{s}</button>
               ))}
             </div>

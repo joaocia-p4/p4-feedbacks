@@ -66,6 +66,8 @@ const contaSchema = z.object({
   dataEntrada: z.preprocess((v) => (v == null ? '' : String(v).trim()), z.string()),
   dataEncerramento: z.preprocess((v) => (v == null ? '' : String(v).trim()), z.string()),
   ativo: z.boolean().default(true),
+  pausado: z.boolean().default(false),
+  motivoPausa: z.string().trim().optional(),
 });
 
 // ── clients ──────────────────────────────────────────────────────────────────
@@ -79,6 +81,8 @@ const createClientSchema = z
     marketplaces: z.array(z.enum(AD_MARKETPLACES)).optional(), // names-only fallback
     agenda: agendaSchema,
     observacoes: z.string().optional(),
+    situacao: z.enum(['ativo', 'onboarding', 'pausado']).default('ativo'),
+    motivoPausa: z.string().trim().optional(),
   })
   .superRefine((b, ctx) => {
     if (!b.analistaId && !b.analista) {
@@ -99,6 +103,8 @@ const updateClientSchema = z.object({
   marketplaces: z.array(z.enum(AD_MARKETPLACES)).optional(),
   agenda: agendaSchema.optional(),
   observacoes: z.string().optional(),
+  situacao: z.enum(['ativo', 'onboarding', 'pausado']).optional(),
+  motivoPausa: z.string().trim().optional(),
 });
 
 // ── list clients query ───────────────────────────────────────────────────────

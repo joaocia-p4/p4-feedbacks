@@ -50,7 +50,7 @@ async function getDashboard(user) {
     const e = mgr.get(k);
     e.clients++;
     e.reports += c.n || 0;
-    if (c.status === 'atrasado') e.overdue++;
+    if (c.statusTag === 'atrasado') e.overdue++;
   }
   const clientsByManager = [...mgr.values()].sort((a, b) => b.clients - a.clients);
 
@@ -73,7 +73,7 @@ async function getDashboard(user) {
 
   // ── lista de atrasados ────────────────────────────────────────────────────
   const overdue = clients
-    .filter((c) => c.status === 'atrasado')
+    .filter((c) => c.statusTag === 'atrasado')
     .map((c) => {
       const lateContas = (c.contas || [])
         .filter((m) => m.status === 'atrasado')
@@ -166,7 +166,8 @@ async function getDashboard(user) {
   const totalRevenue = clients.reduce((a, c) => a + (c.fatLatest || 0), 0);
   const onTimeRate = totalClients ? Math.round((1 - overdueClients / totalClients) * 100) : 100;
   const reportsPerClient = totalClients ? +(totalReports / totalClients).toFixed(1) : 0;
-  const dueToday = clients.filter((c) => p4.isDueOn(c.agenda, p4.todayISO())).length;
+  // pausados/onboarding não são cobrados → fora da contagem "para enviar hoje"
+  const dueToday = clients.filter((c) => c.statusTag !== 'pausado' && c.statusTag !== 'onboarding' && p4.isDueOn(c.agenda, p4.todayISO())).length;
 
   return {
     today: p4.todayISO(),

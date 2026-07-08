@@ -78,6 +78,8 @@ function conta(clientId, mk, seed) {
     dataEntrada: seed.dataEntrada || null,
     dataEncerramento: seed.dataEncerramento || null,
     ativo: seed.ativo !== false,
+    pausado: seed.pausado === true,
+    motivoPausa: seed.motivoPausa || '',
     last: seed.last,
     status: (new Date('2026-06-22') - new Date(seed.last + 'T00:00:00')) / 86400000 > 9 ? 'atrasado' : 'em-dia',
     reports: genReports(`${clientId}-${MK[mk].short}`, seed),
@@ -119,6 +121,20 @@ const RAW = [
   { id: 'c9', loja: 'Gourmet Express', tipo: 'Marca', analista: 'Carla Nunes', contas: [
     ['Magalu',        { fat: 173400, roas: 5.05, acos: 18.0, metaRoas: 4, last: '2026-06-22', n: 21 }],
     ['Mercado Livre', { fat: 121900, roas: 4.66, acos: 19.2, metaRoas: 4, last: '2026-06-22', n: 19 }],
+  ] },
+  // Onboarding (manual): não é cobrado por atraso mesmo sem relatório no ciclo.
+  { id: 'c10', loja: 'Aurora Skincare', tipo: 'Marca', analista: 'Ana Prado', situacao: 'onboarding', contas: [
+    ['Mercado Livre', { fat: 8200, roas: 2.10, acos: 34.0, metaRoas: 4, last: '2026-05-30', n: 1, dataEntrada: '2026-06-15' }],
+  ] },
+  // Pausado (cliente): contrato em renegociação; fora da cobrança.
+  { id: 'c11', loja: 'BellaCasa Enxovais', tipo: 'Loja', analista: 'Bruno Reis', situacao: 'pausado', motivoPausa: 'Contrato em renegociação — retomada prevista para agosto', contas: [
+    ['Shopee',        { fat: 44100, roas: 3.10, acos: 28.0, metaRoas: 4, last: '2026-05-25', n: 10 }],
+    ['Magalu',        { fat: 30500, roas: 2.85, acos: 30.2, metaRoas: 4, last: '2026-05-25', n: 8 }],
+  ] },
+  // Ativo com UMA conta pausada (verba pausada pelo cliente) — as demais cobram normal.
+  { id: 'c12', loja: 'Trilha Outdoor', tipo: 'Loja', analista: 'Carla Nunes', contas: [
+    ['Amazon',        { fat: 98700, roas: 4.90, acos: 18.7, metaRoas: 4, last: '2026-06-22', n: 15 }],
+    ['Mercado Livre', { fat: 52300, roas: 3.40, acos: 27.5, metaRoas: 4, last: '2026-05-20', n: 9, pausado: true, motivoPausa: 'Verba pausada pelo cliente' }],
   ] },
 ];
 
@@ -227,19 +243,38 @@ const CLIENTS = RAW.map((c, ci) => {
   // status por CICLO (mesma regra do backend): usa a data do relatório (last) como
   // referência de geração; asOf = último dia completo (ontem).
   const asOfRef = localISO(addDays(new Date(P4_TODAY + 'T00:00:00'), -1));
-  contas.forEach((m) => { m.status = isOverdueByCycle(agenda, m.last, asOfRef) ? 'atrasado' : 'em-dia'; });
-  // atraso considera só contas ATIVAS — marketplace encerrado não cobra relatório
-  const ativas = contas.filter((m) => m.ativo !== false);
-  const baseAtraso = ativas.length ? ativas : contas;
-  const lastWorst = baseAtraso.reduce((a, m) => (m.last < a ? m.last : a), '9999-12-31');
-  const overdueSched = baseAtraso.some((m) => m.status === 'atrasado');
-  const status = overdueSched ? 'atrasado' : 'em-dia';
-  // cliente "encerrado" só quando todas as contas estão inativas (derivado)
+  // conta pausada não cobra → status "pausado"; senão pela regra de ciclo
+  contas.forEach((m) => { m.status = m.pausado ? 'pausado' : (isOverdueByCycle(agenda, m.last, asOfRef) ? 'atrasado' : 'em-dia'); });
+  // ── situação e tag do cliente (espelho de lib/clientAggregate.js) ──
+  const situacao = c.situacao || 'ativo';
   const encerrado = contas.length > 0 && contas.every((m) => m.ativo === false);
+  const ativas = contas.filter((m) => m.ativo !== false);
+  const cobraveis = ativas.filter((m) => !m.pausado); // cobram relatório
+  const pausadoAll = ativas.length > 0 && ativas.every((m) => m.pausado);
+  const pausado = situacao === 'pausado' || pausadoAll;
+  const onboarding = situacao === 'onboarding';
+  const atrasado = cobraveis.some((m) => isOverdueByCycle(agenda, m.last, asOfRef));
+  const precisaHoje =
+    !encerrado && !pausado && !onboarding &&
+    isDueOn(agenda, P4_TODAY) &&
+    cobraveis.some((m) => isOverdueByCycle(agenda, m.last, P4_TODAY));
+  // precedência: Encerrado > Pausado > Onboarding > Atrasado > Enviar hoje > Em dia
+  const statusTag = encerrado ? 'encerrado'
+    : pausado ? 'pausado'
+    : onboarding ? 'onboarding'
+    : atrasado ? 'atrasado'
+    : precisaHoje ? 'hoje'
+    : 'em-dia';
+  const status = atrasado ? 'atrasado' : 'em-dia'; // compat
+  const overdueSched = atrasado; // compat com consumidores antigos
+  const baseAtraso = cobraveis.length ? cobraveis : (ativas.length ? ativas : contas);
+  const lastWorst = baseAtraso.reduce((a, m) => (m.last < a ? m.last : a), '9999-12-31');
   return {
     ...c, contas, agenda, lastWorst, overdueSched,
     marketplaces: contas.map((m) => m.marketplace),
-    fatLatest, roasW: +roasW.toFixed(2), n, last, status, encerrado,
+    fatLatest, roasW: +roasW.toFixed(2), n, last,
+    situacao, motivoPausa: c.motivoPausa || '',
+    pausado, onboarding, precisaHoje, statusTag, status, encerrado,
   };
 });
 
