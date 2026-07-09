@@ -33,6 +33,51 @@ function StatusTag({ status, encerrado, tag, motivo }) {
   );
 }
 
+// Seletor de analista — popover estilizado (o <select> nativo destoava do
+// design system). Avatar com iniciais + contagem de clientes por analista.
+function AnalystSelect({ value, options, countOf, total, onChange }) {
+  const I = window.Icons;
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const on = value !== 'Todos';
+  const pick = (v) => { onChange(v); setOpen(false); };
+  const initials = (n) => String(n).trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <div className={'an-pick' + (open ? ' open' : '') + (on ? ' on' : '')} ref={ref}>
+      <button type="button" className="an-btn" onClick={() => setOpen((o) => !o)}
+              aria-haspopup="listbox" aria-expanded={open} title="Filtrar por analista">
+        <I.users size={16} />
+        <span className="an-lbl">{on ? value : 'Todos os analistas'}</span>
+        <svg className="an-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {open ? (
+        <div className="an-menu" role="listbox" aria-label="Filtrar por analista">
+          <button type="button" role="option" aria-selected={!on} className={'an-opt' + (!on ? ' sel' : '')} onClick={() => pick('Todos')}>
+            <span className="an-av all"><I.users size={13} /></span>
+            <span className="an-name">Todos os analistas</span>
+            <span className="an-n">{total}</span>
+          </button>
+          {options.map((a) => (
+            <button type="button" key={a} role="option" aria-selected={value === a} className={'an-opt' + (value === a ? ' sel' : '')} onClick={() => pick(a)}>
+              <span className="an-av">{initials(a)}</span>
+              <span className="an-name">{a}</span>
+              <span className="an-n">{countOf(a)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MkRow({ contas }) {
   return (
     <div className="mk-row">
@@ -398,13 +443,9 @@ function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onL
                 </>
               ) : null}
               {seesAll && analistOptions.length > 1 ? (
-                <div className={'filter-select' + (an !== 'Todos' ? ' on' : '')}>
-                  <I.users size={16} />
-                  <select value={an} onChange={(e) => setAn(e.target.value)} aria-label="Filtrar por analista" title="Filtrar por analista">
-                    <option value="Todos">Todos os analistas</option>
-                    {analistOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </div>
+                <AnalystSelect value={an} options={analistOptions} onChange={setAn}
+                               countOf={(a) => scoped.filter((c) => c.analista === a).length}
+                               total={scoped.length} />
               ) : null}
             </div>
             <div className="fb-sep"></div>
