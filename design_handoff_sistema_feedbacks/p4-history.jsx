@@ -788,7 +788,7 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
               <span style={{ textAlign: 'right' }}>ROAS</span>
               <span className="col-hide" style={{ textAlign: 'right' }}>ACOS</span>
               <span className="col-hide" style={{ textAlign: 'right' }}>TACOS</span>
-              <span className="col-hide">Status</span>
+              <span className="col-hide">Meta ROAS</span>
               <span className="col-hide">Marketplace</span>
               <span style={{ textAlign: 'right' }}>Ações</span>
             </div>
@@ -799,10 +799,19 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
                   <span className="mono">criado {window.brShort(r.criadoEm)}</span>
                 </div>
                 <div className="num">{window.fmtMoney(r.faturamento)}</div>
-                <div className="num" style={{ color: r.ok ? 'var(--green-ink)' : 'var(--red)' }}>{String(r.roas).replace('.', ',')}x</div>
+                <div className="num" style={{ color: r.ok == null ? 'inherit' : r.ok ? 'var(--green-ink)' : 'var(--red)' }}>{String(r.roas).replace('.', ',')}x</div>
                 <div className="num col-hide">{String(r.acos).replace('.', ',')}<small>%</small></div>
                 <div className="num col-hide">{String(r.tacos).replace('.', ',')}<small>%</small></div>
-                <div className="col-hide"><window.StatusTag status={r.ok ? 'em-dia' : 'atrasado'} /></div>
+                {/* ok = ROAS ≥ meta (null sem meta) — é desempenho, NÃO atraso de
+                    envio; usar a tag Em dia/Atrasado aqui fazia cliente em dia
+                    parecer "Atrasado" linha a linha. */}
+                <div className="col-hide">
+                  {r.ok == null
+                    ? <span className="mono" title="Sem meta de ROAS cadastrada">—</span>
+                    : <span className={'status-tag ' + (r.ok ? 'ok' : 'late')} title={r.ok ? 'ROAS atingiu a meta' : 'ROAS abaixo da meta'}>
+                        <span className="d"></span>{r.ok ? 'Meta ✓' : 'Meta ✗'}
+                      </span>}
+                </div>
                 <div className="col-hide" style={{ fontSize: 11.5, fontWeight: 600, color: window.mkColor(conta.marketplace) }}>{conta.marketplace}</div>
                 <div className="r-actions">
                   <button className="iconbtn" onClick={() => abrirRelatorio(r)} title="Abrir"><I.open /></button>

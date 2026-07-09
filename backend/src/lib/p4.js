@@ -51,14 +51,32 @@ function localISO(d) {
 function businessTimezone() {
   return process.env.BUSINESS_TZ || 'America/Sao_Paulo';
 }
-// Current calendar date (YYYY-MM-DD) in the business timezone.
-function todayISO() {
+// Formats a Date as YYYY-MM-DD in the business timezone.
+function businessDayOf(date) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: businessTimezone(),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(date);
+}
+// Current calendar date (YYYY-MM-DD) in the business timezone.
+function todayISO() {
+  return businessDayOf(new Date());
+}
+// Data (YYYY-MM-DD) de um valor de data/hora no fuso do NEGÓCIO. Aceita:
+//   - 'YYYY-MM-DD' (datas puras, ex.: salvo_em backfilled = periodo_fim) → direto;
+//   - timestamps ISO com 'T' (salvo_em é gravado em UTC pelo servidor) → converte;
+//   - objetos Date (colunas timestamp do Postgres) → converte.
+// Um relatório gerado às 22h em São Paulo é salvo como T01:00Z do dia SEGUINTE —
+// para agenda/atraso o que vale é a data local, senão ele cai no ciclo errado.
+function businessDateISO(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return isNaN(value) ? null : businessDayOf(value);
+  const s = String(value);
+  if (!s.includes('T')) return s.slice(0, 10);
+  const d = new Date(s);
+  return isNaN(d) ? s.slice(0, 10) : businessDayOf(d);
 }
 // Último dia COMPLETO (ontem). Referência do "atrasado": relatórios são
 // retrospectivos e só contamos dias completos — hoje ainda está em aberto.
@@ -140,13 +158,13 @@ function currentCycleStart(agenda, asOfISO) {
 }
 
 // Atrasado por ciclo: NÃO existe relatório gerado dentro do ciclo atual — i.e. a
-// data de GERAÇÃO (salvo_em) do relatório mais recente é anterior ao início do
-// ciclo. Em dia enquanto houver um relatório gerado no ciclo (mesmo antes do envio)
-// ou o ciclo ainda não tiver "virado".
+// data de GERAÇÃO (salvo_em, na data do fuso do negócio) do relatório mais recente
+// é anterior ao início do ciclo. Em dia enquanto houver um relatório gerado no
+// ciclo (mesmo antes do envio) ou o ciclo ainda não tiver "virado".
 function isOverdueByCycle(agenda, lastGenISO, asOfISO) {
   const start = currentCycleStart(agenda, asOfISO);
   if (!start) return false; // sem histórico de agenda suficiente → não cobra atraso
-  const gen = lastGenISO ? String(lastGenISO).slice(0, 10) : null;
+  const gen = businessDateISO(lastGenISO);
   return !gen || gen < start;
 }
 
@@ -264,6 +282,7 @@ module.exports = {
   isSupportedMarketplace,
   localISO,
   todayISO,
+  businessDateISO,
   lastCompleteDayISO,
   businessTimezone,
   weekdayName,

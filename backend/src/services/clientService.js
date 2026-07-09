@@ -24,10 +24,13 @@ function rowToClientBase(row) {
     analista_id: row.analista_id,
     analista: row.analista_nome,
     agenda: buildAgenda(row),
-    criadoEm: row.criado_em ? String(row.criado_em).slice(0, 10) : null,
+    // criado_em é timestamp: no Postgres vem como objeto Date (String() viraria
+    // "Tue Jul 07..."); converte para YYYY-MM-DD no fuso do negócio.
+    criadoEm: p4.businessDateISO(row.criado_em),
     observacoes: row.observacoes || '',
     situacao: row.situacao || 'ativo',
     motivoPausa: row.motivo_pausa || '',
+    agendaDesde: row.agenda_alterada_em ? String(row.agenda_alterada_em).slice(0, 10) : null,
   };
 }
 function agendaColumns(agenda) {
@@ -105,6 +108,8 @@ function assembleClient(clientRow, accountRows, reportsByAccount, asOf) {
       metaTacos: a.meta_tacos,
       dataEntrada: a.data_entrada ? String(a.data_entrada).slice(0, 10) : null,
       dataEncerramento: a.data_encerramento ? String(a.data_encerramento).slice(0, 10) : null,
+      criadoEm: a.criado_em || null, // fallback de "entrada" p/ graça de conta nova
+
       ativo: a.ativo === 0 || a.ativo === false ? false : true, // SQLite: 0/1
       pausado: a.pausado === 1 || a.pausado === true, // SQLite: 0/1
       motivoPausa: a.motivo_pausa || '',
@@ -323,7 +328,17 @@ async function updateClient(id, body, actingUser) {
     const analyst = await userService.resolveAnalyst(body);
     patch.analista_id = analyst.id;
   }
-  if (body.agenda) Object.assign(patch, agendaColumns(normalizeAgenda(body.agenda)));
+  if (body.agenda) {
+    const cols = agendaColumns(normalizeAgenda(body.agenda));
+    // Só registra a troca quando a agenda realmente MUDOU — a data alimenta a
+    // graça da regra de atraso (não cobrar envios anteriores à troca).
+    const mudou =
+      cols.agenda_freq !== existing.agenda_freq ||
+      (cols.agenda_dia_semana ?? null) !== (existing.agenda_dia_semana ?? null) ||
+      (cols.agenda_dia_mes ?? null) !== (existing.agenda_dia_mes ?? null);
+    Object.assign(patch, cols);
+    if (mudou) patch.agenda_alterada_em = p4.todayISO();
+  }
   if (body.observacoes !== undefined) patch.observacoes = body.observacoes;
   if (body.situacao !== undefined) {
     patch.situacao = body.situacao;
@@ -347,9 +362,29 @@ async function updateClient(id, body, actingUser) {
     if (desired) {
       // Reconcilia por ID da conta (não por marketplace) — assim um cliente pode
       // ter várias contas do mesmo marketplace e a edição preserva o histórico.
-      const current = await trx('accounts').where({ client_id: id }).select('id');
+      const current = await trx('accounts')
+        .where({ client_id: id })
+        .select('id', 'marketplace', 'apelido');
       const currentIds = new Set(current.map((a) => a.id));
       const keptIds = new Set();
+
+      // 1ª passada: contas com id reivindicam as suas (para a adoção abaixo não
+      // "roubar" uma conta que outra entrada do payload referencia por id).
+      for (const c of desired) {
+        if (c.id && currentIds.has(c.id)) keptIds.add(c.id);
+      }
+      // Conta SEM id (payload legado `marketplaces` / importação em massa): adota
+      // a conta existente do mesmo marketplace (preferindo apelido igual) em vez
+      // de apagar e recriar — recriar derrubaria todo o histórico de relatórios
+      // em cascata e o cliente viraria "atrasado" na hora.
+      const adotar = (c) => {
+        const livres = current.filter(
+          (a) => !keptIds.has(a.id) && a.marketplace === c.marketplace
+        );
+        if (!livres.length) return null;
+        const mesmoApelido = livres.find((a) => (a.apelido || '') === (c.apelido || ''));
+        return (mesmoApelido || livres[0]).id;
+      };
 
       for (const c of desired) {
         const vals = {
@@ -365,9 +400,10 @@ async function updateClient(id, body, actingUser) {
           pausado: c.pausado,
           motivo_pausa: c.motivoPausa,
         };
-        if (c.id && currentIds.has(c.id)) {
-          keptIds.add(c.id);
-          await trx('accounts').where({ id: c.id }).update(vals);
+        const targetId = c.id && currentIds.has(c.id) ? c.id : adotar(c);
+        if (targetId) {
+          keptIds.add(targetId);
+          await trx('accounts').where({ id: targetId }).update(vals);
         } else {
           await trx('accounts').insert({ id: uuid(), client_id: id, ...vals });
         }

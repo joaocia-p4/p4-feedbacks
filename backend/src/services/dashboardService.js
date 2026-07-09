@@ -3,10 +3,11 @@ const db = require('../db/knex');
 const p4 = require('../lib/p4');
 const clientService = require('./clientService');
 
-// Segunda-feira da semana de uma data ISO.
+// Segunda-feira da semana de uma data ISO (salvo_em em UTC → data no fuso do negócio).
 function weekStartISO(isoStr) {
-  if (!isoStr) return null;
-  const d = new Date(String(isoStr).slice(0, 10) + 'T00:00:00');
+  const day = p4.businessDateISO(isoStr);
+  if (!day) return null;
+  const d = new Date(day + 'T00:00:00');
   if (isNaN(d)) return null;
   const dow = (d.getDay() + 6) % 7; // 0 = segunda
   d.setDate(d.getDate() - dow);

@@ -425,6 +425,27 @@ function App() {
     loadUsers();
   }, [user, loadClients, loadUsers]);
 
+  // Revalida quando a aba volta ao foco: o gerador salva relatórios em OUTRA aba,
+  // e sem isso o status (Atrasado/Em dia) fica congelado até navegar de novo.
+  useEffect(() => {
+    if (!user || !live) return;
+    let last = 0;
+    const revalidate = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - last < 5000) return; // no máx. 1 refresh a cada 5s
+      last = now;
+      loadClients();
+      if (clientId) loadDetail(clientId, { silent: true });
+    };
+    window.addEventListener('focus', revalidate);
+    document.addEventListener('visibilitychange', revalidate);
+    return () => {
+      window.removeEventListener('focus', revalidate);
+      document.removeEventListener('visibilitychange', revalidate);
+    };
+  }, [user, live, clientId, loadClients, loadDetail]);
+
   const login = (u) => { setUser(u); setScreen(u && u.papel === 'cs' ? 'dashboard' : 'clients'); setClientId(null); };
   const logout = () => { setUser(null); localStorage.removeItem('p4-shell-user'); if (window.P4_API) window.P4_API.logout(); setClients(window.P4_CLIENTS || []); setDetail(null); };
   const openClient = (id) => { setClientId(id); setScreen('history'); loadDetail(id); };
