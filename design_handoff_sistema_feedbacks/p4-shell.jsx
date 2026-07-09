@@ -484,6 +484,11 @@ function App() {
   };
 
   const deleteClient = async (c) => {
+    // exclusão em cascata (contas + todo o histórico de relatórios) — confirma antes
+    const ok = window.confirm(
+      `Excluir o cliente “${c.loja}”?\n\nTodas as contas e o histórico de relatórios serão apagados. Esta ação não pode ser desfeita.`
+    );
+    if (!ok) return;
     if (live) {
       try {
         await window.P4_API.deleteClient(c.id);
