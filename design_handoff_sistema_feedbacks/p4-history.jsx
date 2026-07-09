@@ -212,7 +212,11 @@ function MetricsExplorer({ reports }) {
     );
   }
 
-  const series = all.slice(from, to + 1); // intervalo selecionado (antigo → novo)
+  // Clamp defensivo: se from/to/pinned vierem de um estado antigo maior que a
+  // lista atual, nunca renderiza índice fora dos dados (série vazia = crash).
+  const fromC = Math.max(0, Math.min(from, total - 1));
+  const toC = Math.max(fromC, Math.min(to, total - 1));
+  const series = all.slice(fromC, toC + 1); // intervalo selecionado (antigo → novo)
   const n = series.length;
 
   const H = 300, padL = 14, padR = 14, padT = 18, padB = 34;
@@ -258,6 +262,8 @@ function MetricsExplorer({ reports }) {
   const barOp = (m, hovered) => (m.key === 'vendas' ? (hovered ? 0.85 : 0.5) : (hovered ? 1 : 0.92));
 
   const hv = Math.max(0, Math.min(n - 1, hover));
+  // período fixado só vale se ainda existe na série atual
+  const pin = pinned != null && pinned >= 0 && pinned < n ? pinned : null;
   const onMove = (e) => {
     const rect = svgRef.current.getBoundingClientRect();
     const rel = (e.clientX - rect.left - padL) / plotW;
@@ -347,8 +353,8 @@ function MetricsExplorer({ reports }) {
             </g>
           )) : null}
           {/* período fixado */}
-          {pinned != null ? (
-            <line x1={xAt(pinned)} x2={xAt(pinned)} y1={padT} y2={padT + plotH}
+          {pin != null ? (
+            <line x1={xAt(pin)} x2={xAt(pin)} y1={padT} y2={padT + plotH}
                   stroke="#1C242E" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.5" />
           ) : null}
           {/* período em foco */}
@@ -416,20 +422,20 @@ function MetricsExplorer({ reports }) {
 
       {/* Comparar períodos: tabela base × atual quando há um período fixado;
           caso contrário, legenda com valor atual e faixa min–max. */}
-      {pinned != null && pinned !== hv ? (
+      {pin != null && pin !== hv ? (
         <div className="mx-cmp">
           <div className="mx-cmp-h">
-            <span><b>Comparando períodos</b> · {window.brShort(series[pinned].periodoFim)} → {window.brShort(series[hv].periodoFim)}</span>
+            <span><b>Comparando períodos</b> · {window.brShort(series[pin].periodoFim)} → {window.brShort(series[hv].periodoFim)}</span>
             <button className="mx-cmp-clear" onClick={() => setPinned(null)}>✕ limpar</button>
           </div>
           <div className="mx-cmp-row head">
             <span>Indicador</span>
-            <span>{window.brShort(series[pinned].periodoFim)}</span>
+            <span>{window.brShort(series[pin].periodoFim)}</span>
             <span>{window.brShort(series[hv].periodoFim)}</span>
             <span>Variação</span>
           </div>
           {selMetrics.map((m) => {
-            const a = numAt(pinned, m.key), b = numAt(hv, m.key);
+            const a = numAt(pin, m.key), b = numAt(hv, m.key);
             const pc = a != null && a !== 0 && b != null ? ((b - a) / a) * 100 : null;
             return (
               <div className="mx-cmp-row" key={m.key}>
@@ -774,7 +780,10 @@ function History({ client, user, role, onBack, onEdit, onLogout, onManageUsers, 
 
           {conta.marketplace === 'Mercado Livre' ? <MeliReputation conta={conta} /> : null}
 
-          <MetricsExplorer reports={reports} conta={conta} />
+          {/* key remonta o gráfico ao trocar de conta: o estado interno (intervalo,
+              hover, período fixado) é da conta anterior e, aplicado aos relatórios
+              da nova, estourava índice → tela branca. */}
+          <MetricsExplorer key={conta.id} reports={reports} conta={conta} />
 
           <div className="sec-head">
             <h2>Relatórios</h2>
