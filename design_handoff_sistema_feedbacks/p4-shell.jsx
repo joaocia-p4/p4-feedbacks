@@ -455,8 +455,13 @@ function App() {
   // navegação do menu lateral
   const navTo = (s) => { if (s === 'clients') { back(); return; } setScreen(s); };
 
+  // Trava de requisição em andamento: com a API lenta (cold start do Render),
+  // um segundo clique em salvar disparava outro POST e DUPLICAVA o cliente.
+  const savingClientRef = React.useRef(false);
   const saveClient = async (payload) => {
     if (live) {
+      if (savingClientRef.current) return;
+      savingClientRef.current = true;
       try {
         const saved = payload.id
           ? await window.P4_API.updateClient(payload.id, payload)
@@ -470,6 +475,7 @@ function App() {
           toast(`Cliente “${saved.loja}” cadastrado · ${saved.contas.length} marketplace(s)`);
         }
       } catch (e) { toast(e.message || 'Erro ao salvar cliente'); }
+      finally { savingClientRef.current = false; }
       return;
     }
     // fallback protótipo (backend offline)

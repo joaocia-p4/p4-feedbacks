@@ -150,6 +150,9 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   const [situacao, setSituacao] = React.useState(client ? (client.situacao || 'ativo') : 'ativo');
   const [motivoPausaCliente, setMotivoPausaCliente] = React.useState(client ? (client.motivoPausa || '') : '');
   const [touched, setTouched] = React.useState(false);
+  // trava anti duplo clique: a API pode levar dezenas de segundos (cold start do
+  // Render) e cada clique extra em "Salvar" criava um cliente DUPLICADO.
+  const [saving, setSaving] = React.useState(false);
 
   const setConta = (i, patch) => setContas((arr) => arr.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const addConta = () => setContas((arr) => [...arr, blankConta()]);
@@ -158,10 +161,18 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
   const validMks = contas.filter((c) => c.marketplace);
   const canSave = loja.trim() && analista && validMks.length > 0;
 
-  const save = () => {
+  const save = async () => {
+    if (saving) return;
     setTouched(true);
     if (!canSave) { toast('Preencha nome, analista e ao menos um marketplace'); return; }
-    onSave({
+    setSaving(true);
+    try {
+      await onSave(buildPayload());
+    } finally {
+      setSaving(false);
+    }
+  };
+  const buildPayload = () => ({
       id: client ? client.id : null,
       loja: loja.trim(),
       tipo,
@@ -187,7 +198,6 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
       situacao,
       motivoPausa: motivoPausaCliente,
     });
-  };
 
   return (
     <div className="shell">
@@ -358,10 +368,10 @@ function NewClient({ user, role, client, users, onBack, onLogout, onManageUsers,
             {editing
               ? <button className="btn-line danger-line" onClick={() => onDelete && onDelete(client)} style={{ marginRight: 'auto' }}><I.trash /> Excluir cliente</button>
               : null}
-            <button className="btn-line" onClick={onBack}>Cancelar</button>
-            <button className="btn-accent" onClick={save}>
+            <button className="btn-line" onClick={onBack} disabled={saving}>Cancelar</button>
+            <button className="btn-accent" onClick={save} disabled={saving}>
               {editing ? <I.edit size={16} /> : <I.plus size={16} />}
-              {editing ? 'Salvar alterações' : 'Salvar cliente'}
+              {saving ? 'Salvando…' : (editing ? 'Salvar alterações' : 'Salvar cliente')}
             </button>
           </div>
 
