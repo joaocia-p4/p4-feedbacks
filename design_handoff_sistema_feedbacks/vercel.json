@@ -1,0 +1,10 @@
+{
+  "headers": [
+    {
+      "source": "/(.*)\\.(jsx|js|html|css)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+      ]
+    }
+  ]
+}

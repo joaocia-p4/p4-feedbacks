@@ -43,6 +43,28 @@ function TopBar({ title, user, role, onBack, onLogout, onManageUsers }) {
 }
 window.TopBar = TopBar;
 
+// Se uma tela quebrar, mostra o erro (com mensagem) em vez de deixar a página
+// inteira branca — dá para continuar navegando e reportar o problema.
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (!this.state.err) return this.props.children;
+    const msg = (this.state.err && this.state.err.message) || String(this.state.err);
+    return (
+      <div className="page" style={{ display: 'grid', placeItems: 'center', minHeight: '70vh', padding: 24 }}>
+        <div style={{ maxWidth: 520, textAlign: 'center', background: 'var(--paper, #fff)', border: '1px solid var(--line, #e9ece9)', borderRadius: 16, padding: '30px 28px' }}>
+          <div style={{ fontSize: 34, marginBottom: 8 }}>😵</div>
+          <h2 style={{ margin: '0 0 8px' }}>Algo deu errado nesta tela</h2>
+          <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 6px' }}>Manda esta mensagem para o suporte:</p>
+          <code style={{ display: 'block', fontSize: 12, background: '#f4f6f3', borderRadius: 8, padding: '8px 10px', marginBottom: 16, wordBreak: 'break-word' }}>{msg}</code>
+          <button className="btn-accent" onClick={() => window.location.reload()}>Recarregar a página</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 // ---------------------------------------------------------------- Sidebar (menu lateral)
 function Sidebar({ user, role, screen, onNav }) {
   const I = window.Icons;
@@ -535,7 +557,8 @@ function App() {
   return (
     <>
       {user ? <Sidebar user={user} role={role} screen={screen} onNav={navTo} /> : null}
-      {content}
+      {/* key reseta o boundary ao navegar — o erro não "gruda" entre telas */}
+      <ErrorBoundary key={screen + ':' + (clientId || '')}>{content}</ErrorBoundary>
       {user && usersOpen ? <UsersModal me={user} onClose={() => setUsersOpen(false)} toast={toast} /> : null}
       {user && importOpen ? <window.ImportClients user={user} role={role} users={usersList} existing={clients} live={live} onClose={() => setImportOpen(false)} onDone={loadClients} toast={toast} /> : null}
       {toastMsg ? <div className="toast"><span className="d"></span>{toastMsg}</div> : null}
