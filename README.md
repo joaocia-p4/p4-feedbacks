@@ -21,8 +21,11 @@ performance de Ads dos clientes em marketplaces.
 
 Instale:
 
-- [Git](https://git-scm.com) (ou o [GitHub CLI](https://cli.github.com), que facilita o login)
-- [Node.js](https://nodejs.org) 18 ou mais novo (`node -v` para conferir)
+- [Git](https://git-scm.com) — no Mac já vem com as Xcode Command Line Tools
+  (rode `git` no Terminal e aceite a instalação, se pedir). O
+  [GitHub CLI](https://cli.github.com) facilita o login (`brew install gh`).
+- [Node.js](https://nodejs.org) 18 ou mais novo (`node -v` para conferir) —
+  no Mac, `brew install node` ou [nvm](https://github.com/nvm-sh/nvm)
 - (Opcional) [Claude Code](https://claude.com/claude-code), se for continuar o desenvolvimento com ele
 
 ### 2. Clonar o repositório
@@ -55,6 +58,7 @@ Neon só é usado pelo Render.
 Mercado Livre com `MELI_APP_ID`/`MELI_SECRET`), copie o modelo e preencha:
 
 ```bash
+cp .env.example .env     # Mac/Linux
 copy .env.example .env   # Windows
 ```
 
@@ -86,10 +90,12 @@ E abra a URL que aparecer (ex.: `http://localhost:3000`).
 ### 6. (Opcional) Memória do Claude Code
 
 Para o Claude do PC novo lembrar do contexto do projeto (regras de negócio,
-roadmap, preferências), copie a pasta `C:\Users\<usuário>\.claude` do PC antigo
-para o mesmo lugar no PC novo. A memória é indexada pelo **caminho do projeto**;
-se o projeto ficar em um caminho diferente, renomeie a subpasta correspondente
-dentro de `.claude\projects\` para o novo caminho.
+roadmap, preferências), copie a pasta `.claude` da home do usuário do PC antigo
+(`C:\Users\<usuário>\.claude` no Windows) para a home do PC novo (`~/.claude`
+no Mac). A memória é indexada pelo **caminho do projeto**; como o caminho muda
+de um computador para outro (ex.: `C:\...` → `/Users/...`), renomeie a
+subpasta correspondente dentro de `.claude/projects/` para o novo caminho —
+ou peça ao próprio Claude para fazer isso.
 
 ### 7. Conferir que está tudo certo
 
