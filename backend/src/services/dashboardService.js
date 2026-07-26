@@ -3,6 +3,7 @@ const db = require('../db/knex');
 const p4 = require('../lib/p4');
 const clientService = require('./clientService');
 const { byManager, countActiveAccounts } = require('../lib/dashboardAggregates');
+const { reportMonth, ratios } = require('../lib/metrics');
 
 // Segunda-feira da semana de uma data ISO (salvo_em em UTC → data no fuso do negócio).
 function weekStartISO(isoStr) {
@@ -103,15 +104,10 @@ async function getDashboard(user) {
     'c.id as client_id', 'u.nome as analista'
   );
 
-  const ratios = (fat, inv, rec) => ({
-    roas: inv > 0 ? +(rec / inv).toFixed(2) : null,
-    acos: rec > 0 ? +((inv / rec) * 100).toFixed(1) : null,
-    tacos: fat > 0 ? +((inv / fat) * 100).toFixed(1) : null,
-  });
   const monthsMap = {};
   for (const r of metricRows) {
-    const m = String(r.periodo_fim || r.periodo_ini || r.criado_em || '').slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(m)) continue; // ignora relatórios sem data de período válida
+    const m = reportMonth(r);
+    if (!m) continue; // ignora relatórios sem data de período válida
     const nome = r.analista || '—';
     if (!monthsMap[m]) monthsMap[m] = new Map();
     const map = monthsMap[m];
