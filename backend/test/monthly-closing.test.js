@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { monthRange, accountInMonth, consolidate } = require('../src/lib/monthlyClosing');
+const { monthRange, accountInMonth, consolidate, metaStatus } = require('../src/lib/monthlyClosing');
 
 // ── janela do mês ────────────────────────────────────────────────────────────
 test('mês de 31 dias', () => {
@@ -88,4 +88,45 @@ test('campos ausentes ou textuais não viram NaN', () => {
   const t = consolidate([{ faturamento: null, investimento: undefined }, rel(500, 50, 200)]);
   assert.equal(t.faturamento, 500);
   assert.equal(t.investimento, 50);
+});
+
+// ── comparação com meta ──────────────────────────────────────────────────────
+test('ROAS é piso: bateu quando alcança ou passa', () => {
+  assert.equal(metaStatus(4.8, '4,00', 'piso'), true);
+  assert.equal(metaStatus(4.0, '4,00', 'piso'), true);
+  assert.equal(metaStatus(3.9, '4,00', 'piso'), false);
+});
+
+test('ACOS é teto: bateu quando fica abaixo', () => {
+  assert.equal(metaStatus(18, '20,00', 'teto'), true);
+  assert.equal(metaStatus(20, '20,00', 'teto'), true);
+  assert.equal(metaStatus(22, '20,00', 'teto'), false);
+});
+
+test('meta vazia devolve null, nunca false', () => {
+  // meta ausente não é meta não batida — a tela mostra "—", não "✗"
+  assert.equal(metaStatus(4.8, '', 'piso'), null);
+  assert.equal(metaStatus(4.8, null, 'piso'), null);
+  assert.equal(metaStatus(4.8, '0', 'piso'), null);
+});
+
+test('valor ausente devolve null', () => {
+  assert.equal(metaStatus(null, '4,00', 'piso'), null);
+  assert.equal(metaStatus(undefined, '4,00', 'piso'), null);
+});
+
+test('meta em pt-BR com milhar é lida certo', () => {
+  assert.equal(metaStatus(1500, '1.200,00', 'piso'), true);
+});
+
+test('direcao desconhecida lança erro', () => {
+  assert.throws(
+    () => metaStatus(4.8, '4,00', 'invalido'),
+    /direcao desconhecida/
+  );
+});
+
+test('valor 0 é válido (falsy mas não null/undefined)', () => {
+  // com teto, 0 < ceiling → true
+  assert.equal(metaStatus(0, '20,00', 'teto'), true);
 });

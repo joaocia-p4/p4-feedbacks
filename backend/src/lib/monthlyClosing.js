@@ -1,6 +1,7 @@
 // monthlyClosing — regras do fechamento mensal. Puras: sem banco, sem relógio.
 
 const { ratios } = require('./metrics');
+const p4 = require('./p4');
 
 // Primeiro e último dia de 'YYYY-MM'. Date.UTC(y, m, 0) = último dia do mês m
 // (índice m já é o mês seguinte em base 0), então cobre bissexto de graça.
@@ -44,4 +45,17 @@ function consolidate(rows) {
   return { ...t, ...ratios(t.faturamento, t.investimento, t.receitaAds) };
 }
 
-module.exports = { monthRange, accountInMonth, consolidate };
+// Compara um valor consolidado com a meta cadastrada da conta.
+// direcao: 'piso' (ROAS — quanto mais alto melhor) | 'teto' (ACOS/TACOS).
+// Devolve null quando não há meta ou não há valor: meta ausente NÃO é meta
+// não batida, e a tela precisa distinguir "—" de "✗".
+function metaStatus(valor, metaRaw, direcao) {
+  const meta = p4.parseNum(metaRaw);
+  if (!(meta > 0)) return null;
+  if (valor === null || valor === undefined) return null;
+  if (direcao === 'piso') return valor >= meta;
+  if (direcao === 'teto') return valor <= meta;
+  throw new Error(`direcao desconhecida: "${direcao}". Use 'piso' ou 'teto'.`);
+}
+
+module.exports = { monthRange, accountInMonth, consolidate, metaStatus };
