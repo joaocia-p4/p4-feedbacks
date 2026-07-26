@@ -78,6 +78,10 @@
     return (await apiFetch('/closings/' + encodeURIComponent(clientId) + '/' + encodeURIComponent(ym),
       { method: 'PUT', body: payload })).closing;
   }
+  async function saveFigures(clientId, ym, contas) {
+    return apiFetch('/closings/' + encodeURIComponent(clientId) + '/' + encodeURIComponent(ym) + '/figures',
+      { method: 'PUT', body: { contas } });
+  }
 
   // relatórios
   async function listReports(clientId, accId) {
@@ -119,7 +123,7 @@
     listUsers, createUser, updateUser, deleteUser,
     listClients, getClient, createClient, updateClient, deleteClient,
     listReports, createReport, deleteReport,
-    getDashboard, getClosings, saveClosing,
+    getDashboard, getClosings, saveClosing, saveFigures,
     meliStatus, meliConnect, meliConnectLink, meliDisconnect, meliProbe, meliExplore, meliReportData, meliReputation, meliCampaigns,
   };
 })();
