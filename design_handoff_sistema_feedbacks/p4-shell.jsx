@@ -96,11 +96,9 @@ function Sidebar({ user, role, screen, onNav }) {
               {chartIcon}<span>Painel CS</span>
             </button>
           : null}
-        {seesPanel
-          ? <button className={'as-item' + (screen === 'closing' ? ' on' : '')} onClick={() => onNav('closing')} title="Fechamento mensal">
-              {docIcon}<span>Fechamento</span>
-            </button>
-          : null}
+        <button className={'as-item' + (screen === 'closing' ? ' on' : '')} onClick={() => onNav('closing')} title="Fechamento mensal">
+          {docIcon}<span>Fechamento</span>
+        </button>
         <button className={'as-item' + (screen === 'settings' ? ' on' : '')} onClick={() => onNav('settings')} title="Configurações">
           <I.cog size={18} /><span>Configurações</span>
         </button>
