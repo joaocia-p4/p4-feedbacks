@@ -72,6 +72,13 @@
   // painel (admin / cs)
   async function getDashboard() { return apiFetch('/dashboard'); }
 
+  // fechamento mensal
+  async function getClosings(ym) { return apiFetch('/closings' + qs({ ym })); }
+  async function saveClosing(clientId, ym, payload) {
+    return (await apiFetch('/closings/' + encodeURIComponent(clientId) + '/' + encodeURIComponent(ym),
+      { method: 'PUT', body: payload })).closing;
+  }
+
   // relatórios
   async function listReports(clientId, accId) {
     return (await apiFetch('/clients/' + encodeURIComponent(clientId) + '/accounts/' + encodeURIComponent(accId) + '/reports')).reports;
@@ -112,7 +119,7 @@
     listUsers, createUser, updateUser, deleteUser,
     listClients, getClient, createClient, updateClient, deleteClient,
     listReports, createReport, deleteReport,
-    getDashboard,
+    getDashboard, getClosings, saveClosing,
     meliStatus, meliConnect, meliConnectLink, meliDisconnect, meliProbe, meliExplore, meliReportData, meliReputation, meliCampaigns,
   };
 })();
