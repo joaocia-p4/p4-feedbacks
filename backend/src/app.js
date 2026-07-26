@@ -12,6 +12,7 @@ const reportRoutes = require('./routes/reports');
 const userRoutes = require('./routes/users');
 const dashboardRoutes = require('./routes/dashboard');
 const integrationRoutes = require('./routes/integrations');
+const closingRoutes = require('./routes/closings');
 
 const app = express();
 
@@ -33,7 +34,7 @@ app.get('/', (_req, res) => {
   res.json({
     name: 'Sistema de Feedbacks · Método P4 — API',
     status: 'ok',
-    endpoints: ['/auth', '/clients', '/users', '/accounts/:accId/reports', '/reports/:id'],
+    endpoints: ['/auth', '/clients', '/users', '/closings', '/accounts/:accId/reports', '/reports/:id'],
   });
 });
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -44,6 +45,7 @@ app.use('/clients', clientRoutes);
 app.use('/users', userRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/integrations', integrationRoutes);
+app.use('/closings', closingRoutes);
 app.use('/', reportRoutes); // /accounts/:accId/reports and /reports/:id
 
 // ── errors ───────────────────────────────────────────────────────────────────
