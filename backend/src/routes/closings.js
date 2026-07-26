@@ -39,4 +39,28 @@ router.put(
   })
 );
 
+// Valor de lançamento: número finito e não negativo, ou null (campo em branco).
+function valorValido(v) {
+  return v === null || v === undefined || (typeof v === 'number' && Number.isFinite(v) && v >= 0);
+}
+
+router.put(
+  '/:clientId/:ym/figures',
+  asyncHandler(async (req, res) => {
+    const { clientId, ym } = req.params;
+    if (!closingService.isValidYm(ym)) throw badRequest('Mês inválido. Use o formato AAAA-MM.');
+    const contas = (req.body || {}).contas;
+    if (!Array.isArray(contas)) throw badRequest('Informe contas como uma lista.');
+    for (const c of contas) {
+      if (!c || typeof c.accountId !== 'string' || !c.accountId) {
+        throw badRequest('Cada conta precisa de um accountId.');
+      }
+      if (!valorValido(c.faturamento) || !valorValido(c.investimento) || !valorValido(c.receitaAds)) {
+        throw badRequest('Faturamento, investimento e receita de Ads devem ser números não negativos ou vazios.');
+      }
+    }
+    res.json(await closingService.saveFigures(req.user, clientId, ym, contas));
+  })
+);
+
 module.exports = router;
