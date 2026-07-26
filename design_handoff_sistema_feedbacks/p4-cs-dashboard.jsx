@@ -57,6 +57,97 @@ function HBars({ items, color, danger }) {
   );
 }
 
+// Composição da base de cada gestor — um anel (pizza vazada) por analista.
+// "Ativo" é o cliente rodando, atrasado ou não: atraso é assunto do KPI
+// "Atrasados" e da lista de atraso, não deste card.
+//
+// A ORDEM DAS FATIAS NO ANEL É FIXA e foi validada com o validador de paleta do
+// dataviz. Verde↔âmbar dá ΔE 5.7 sob protanopia, abaixo do piso — nesta ordem
+// os dois caem em lados OPOSTOS do anel (nunca se tocam) e o pior par adjacente
+// fica em 9.9. Não reordene sem rodar dataviz/scripts/validate_palette.js.
+const MGR_SEGS = [
+  { key: 'ativos', label: 'ativos', color: 'var(--brand, #22C55E)' },
+  { key: 'onboarding', label: 'onboarding', color: 'var(--violet, #7C5CFC)' },
+  { key: 'pausado', label: 'em pausa', color: 'var(--amber, #F59E0B)' },
+  { key: 'encerrado', label: 'encerrado', color: '#8A978C' },
+];
+
+function LegendDot({ color }) {
+  return <i style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', flex: 'none' }} />;
+}
+
+// Anel SVG. Cada fatia é um <circle> próprio (tooltip por fatia) desenhado com
+// stroke-dasharray; o vão de 2px entre fatias é o "surface gap" — é ele que dá
+// alívio ao par vermelho↔verde no fechamento.
+function Donut({ slices, total, size = 84 }) {
+  const R = 38, SW = 13, C = 2 * Math.PI * R;
+  const GAP = slices.length > 1 ? 2.5 : 0;
+  let acc = 0;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flex: 'none' }}>
+      <svg viewBox="0 0 100 100" width={size} height={size} style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
+        <circle cx="50" cy="50" r={R} fill="none" stroke="var(--stage, #F4F7F3)" strokeWidth={SW} />
+        {slices.map((s) => {
+          const len = Math.max(1, (s.value / total) * C - GAP);
+          const off = -(acc / total) * C - GAP / 2;
+          acc += s.value;
+          return (
+            <circle key={s.key} cx="50" cy="50" r={R} fill="none" stroke={s.color} strokeWidth={SW}
+                    strokeDasharray={`${len} ${C - len}`} strokeDashoffset={off}>
+              <title>{`${s.value} ${s.label}`}</title>
+            </circle>
+          );
+        })}
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+        <b style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 17, lineHeight: 1, color: 'var(--ink, #0E1A13)' }}>{total}</b>
+        <span style={{ fontSize: 8.5, color: 'var(--muted)', letterSpacing: '.03em' }}>clientes</span>
+      </div>
+    </div>
+  );
+}
+
+function ManagerDonuts({ items }) {
+  if (!items.length) return <div style={{ color: 'var(--muted)', fontSize: 12 }}>sem dados</div>;
+  const legendItem = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' };
+
+  return (
+    <div>
+      {/* legenda do vocabulário completo — os anéis só mostram fatias não-zeradas */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
+        {MGR_SEGS.map((s) => <span key={s.key} style={legendItem}><LegendDot color={s.color} />{s.label}</span>)}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))', gap: 14 }}>
+        {items.map((r, i) => {
+          const slices = MGR_SEGS.filter((s) => r[s.key] > 0).map((s) => ({ ...s, value: r[s.key] }));
+          return (
+            <div key={i} className="dash-no-break"
+                 style={{ display: 'flex', gap: 14, alignItems: 'center', border: '1px solid var(--line, #E7ECE6)', borderRadius: 12, padding: '14px 16px' }}>
+              <Donut slices={slices} total={r.total} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                     title={r.analista}>{r.analista}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 7 }}>{r.carteira} na carteira</div>
+                {/* números visíveis: a leitura não depende de hover nem de cor */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {slices.map((s) => (
+                    <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
+                      <LegendDot color={s.color} />
+                      <b style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: 'var(--ink-2, #4E5D54)' }}>{s.value}</b>
+                      {s.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Kpi({ label, value, foot, footColor }) {
   return (
     <div className="kpi-mini dash-no-break">
@@ -195,12 +286,9 @@ function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGoto
               {/* KPIs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 22 }}>
                 <Kpi label="Clientes" value={t.totalClients} foot={`${t.clientsNoReports} sem relatório`} />
+                <Kpi label="Contas" value={t.totalAccounts} foot={`${String(t.accountsPerClient).replace('.', ',')} por cliente`} />
                 <Kpi label="Atrasados" value={t.overdueClients} foot={`${t.onTimeRate}% no prazo`} footColor={t.overdueClients ? 'var(--red)' : 'var(--green-ink)'} />
                 <Kpi label="Para enviar hoje" value={t.dueToday} foot="agendados p/ hoje" />
-                <Kpi label="Relatórios" value={t.totalReports} foot={`${t.reportsPerClient} por cliente`} />
-                <Kpi label="Relatórios na semana" value={t.reportsThisWeek} foot={`semana passada: ${t.reportsLastWeek}`} footColor={t.reportsThisWeek >= t.reportsLastWeek ? 'var(--green-ink)' : 'var(--red)'} />
-                <Kpi label="ROAS médio" value={String(t.avgRoas).replace('.', ',') + 'x'} />
-                <Kpi label="Faturamento" value={window.fmtMoneyShort(t.totalRevenue || 0)} foot="soma do último de cada conta" />
                 <Kpi label="No prazo" value={t.onTimeRate + '%'} foot="entrega em dia" footColor={t.onTimeRate >= 80 ? 'var(--green-ink)' : 'var(--red)'} />
               </div>
 
@@ -209,13 +297,18 @@ function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGoto
                 ? <AnalystMetrics am={data.analystMonthly} />
                 : null}
 
+              {/* Composição da base por gestor — bloco próprio: um anel por analista
+                  precisa de largura, não cabe na grade de cards estreitos */}
+              <div style={{ marginBottom: 22 }}>
+                <DashCard title="Clientes por gestor" sub="composição da base de cada analista">
+                  <ManagerDonuts items={data.clientsByManager || []} />
+                </DashCard>
+              </div>
+
               {/* Gráficos */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 22 }}>
                 <DashCard title="Relatórios gerados por semana" sub="últimas 12 semanas">
                   <VBars items={(data.reportsByWeek || []).map((w) => ({ label: weekLbl(w.weekStart), value: w.count }))} color="var(--grad)" />
-                </DashCard>
-                <DashCard title="Clientes por gestor" sub="responsável · atrasados">
-                  <HBars items={(data.clientsByManager || []).map((m) => ({ label: m.analista, value: m.clients, danger: m.overdue }))} color="var(--grad)" danger="var(--red)" />
                 </DashCard>
                 <DashCard title="Entrada de clientes" sub="novos clientes por mês">
                   {(data.entriesByMonth || []).length
