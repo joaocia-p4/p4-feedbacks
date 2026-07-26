@@ -95,6 +95,7 @@ function enrichAccount(acc, asOf, agenda, agendaDesde) {
     metaTacos: acc.metaTacos,
     dataEntrada: acc.dataEntrada || null,
     dataEncerramento: acc.dataEncerramento || null,
+    criadoEm: p4.businessDateISO(acc.criadoEm),
     ativo: acc.ativo === false ? false : true,
     pausado,
     motivoPausa: acc.motivoPausa || acc.motivo_pausa || '',

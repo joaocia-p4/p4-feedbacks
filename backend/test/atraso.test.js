@@ -228,3 +228,31 @@ test('cliente onboarding sem relatórios: statusTag e status legado coerentes', 
   assert.equal(c.statusTag, 'onboarding');
   assert.equal(c.status, 'em-dia');
 });
+
+// ── conta expõe a data de criação (fallback de entrada no fechamento mensal) ──
+test('conta enriquecida repassa criadoEm como string', () => {
+  const c = enrichClient(
+    { id: 'c1', loja: 'Teste', agenda: { freq: 'Semanal', diaSemana: 'Quarta' } },
+    [{ id: 'a1', marketplace: 'Shopee', ativo: true, criadoEm: '2026-02-10', reports: [] }],
+    { asOf: ASOF }
+  );
+  assert.equal(c.contas[0].criadoEm, '2026-02-10');
+});
+
+test('conta enriquecida normaliza criadoEm como Date (Postgres)', () => {
+  const c = enrichClient(
+    { id: 'c1', loja: 'Teste', agenda: { freq: 'Semanal', diaSemana: 'Quarta' } },
+    [{ id: 'a1', marketplace: 'Shopee', ativo: true, criadoEm: new Date('2026-02-10T12:00:00Z'), reports: [] }],
+    { asOf: ASOF }
+  );
+  assert.equal(c.contas[0].criadoEm, '2026-02-10');
+});
+
+test('conta enriquecida retorna null quando criadoEm ausente', () => {
+  const c = enrichClient(
+    { id: 'c1', loja: 'Teste', agenda: { freq: 'Semanal', diaSemana: 'Quarta' } },
+    [{ id: 'a1', marketplace: 'Shopee', ativo: true, reports: [] }],
+    { asOf: ASOF }
+  );
+  assert.equal(c.contas[0].criadoEm, null);
+});
