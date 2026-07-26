@@ -39,6 +39,33 @@ function mcParseNum(s) {
   return isNaN(n) ? null : n;
 }
 
+// Número -> texto do campo, em formato BR. null/undefined vira campo vazio:
+// campo em branco é "não lançado", e pré-preencher com zero empurraria o
+// usuário a confirmar um dado que ninguém informou (spec §9).
+function mcFmtInput(v) {
+  if (v === null || v === undefined) return '';
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Mesma fórmula do `ratios()` do backend (backend/src/lib/metrics.js). A cópia
+// é deliberada: serve só para dar retorno imediato enquanto se digita. A fonte
+// de verdade continua sendo o backend, que volta no refetch depois de salvar.
+function mcRatios(fat, inv, rec) {
+  return {
+    roas: inv > 0 ? +(rec / inv).toFixed(2) : null,
+    acos: rec > 0 ? +((inv / rec) * 100).toFixed(1) : null,
+    tacos: fat > 0 ? +((inv / fat) * 100).toFixed(1) : null,
+  };
+}
+
+// Mesma regra do `metaStatus()` do backend, pelo mesmo motivo: prévia ao digitar.
+function mcMetaStatus(valor, metaRaw, direcao) {
+  const meta = mcParseNum(metaRaw);
+  if (!(meta > 0)) return null;
+  if (valor === null || valor === undefined) return null;
+  return direcao === 'piso' ? valor >= meta : valor <= meta;
+}
+
 // ✓ / ✗ / — conforme o backend já resolveu em `atingiu`
 function McMeta({ ok, meta, sufixo }) {
   if (ok === null || ok === undefined) return <span style={{ color: 'var(--muted)' }}>—</span>;
@@ -49,7 +76,8 @@ function McMeta({ ok, meta, sufixo }) {
   );
 }
 
-const MC_COLS = '2fr 1fr 1fr .8fr 1fr';
+const MC_COLS = '1.6fr 1fr 1fr 1fr .7fr 1fr';
+//               conta  fatur invest recAds roas  metas/situação
 // Tags de status (vocabulário de p4-clients.jsx) cujo cliente não deve
 // relatório no mês — a falta de relatório não é negligência, então o aviso ⚠
 // de "sem relatório" não se aplica.
@@ -62,6 +90,7 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
   const [err, setErr] = React.useState('');
   const [aberto, setAberto] = React.useState(null); // clientId expandido (um por vez)
   const [obs, setObs] = React.useState('');
+  const [figs, setFigs] = React.useState({}); // accountId -> { faturamento, investimento, receitaAds } como texto
   const [salvando, setSalvando] = React.useState(false);
   const [recarregar, setRecarregar] = React.useState(0); // incrementa p/ forçar nova busca após salvar
 
@@ -97,12 +126,20 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
   React.useEffect(() => {
     setAberto(null);
     setObs('');
+    setFigs({});
   }, [ym]);
 
   const expandir = (c) => {
     if (aberto === c.clientId) { setAberto(null); return; }
     setAberto(c.clientId);
     setObs((c.closing && c.closing.observacoes) || '');
+    const seed = {};
+    for (const a of c.contas) {
+      seed[a.accountId] = a.lancado
+        ? { faturamento: mcFmtInput(a.totals.faturamento), investimento: mcFmtInput(a.totals.investimento), receitaAds: mcFmtInput(a.totals.receitaAds) }
+        : { faturamento: '', investimento: '', receitaAds: '' };
+    }
+    setFigs(seed);
   };
 
   // `fechado` pode ser true (fechar), false (reabrir) ou undefined (só salvar
@@ -168,6 +205,7 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
                   <span>Cliente</span>
                   <span style={{ textAlign: 'right' }}>Faturamento</span>
                   <span style={{ textAlign: 'right' }}>Investimento</span>
+                  <span style={{ textAlign: 'right' }}>Receita Ads</span>
                   <span style={{ textAlign: 'right' }}>ROAS</span>
                   <span style={{ textAlign: 'right' }}>Situação</span>
                 </div>
@@ -184,6 +222,7 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
                       </span>
                       <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(c.totals.faturamento)}</span>
                       <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(c.totals.investimento)}</span>
+                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(c.totals.receitaAds)}</span>
                       <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcRoas(c.totals.roas)}</span>
                       <span style={{ textAlign: 'right', fontSize: 11.5, fontWeight: 600, color: c.closing && c.closing.fechadoEm ? 'var(--brand-ink)' : 'var(--muted)' }}>
                         {c.closing && c.closing.fechadoEm ? '✓ fechado' : '● a fechar'}
@@ -192,40 +231,63 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
 
                     {aberto === c.clientId ? (
                       <div style={{ padding: '14px 18px 18px 40px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2,#F7FAF6)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: MC_COLS, gap: 10, padding: '0 0 6px', fontSize: 10, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                          <span>Conta</span>
+                          <span style={{ textAlign: 'right' }}>Faturamento</span>
+                          <span style={{ textAlign: 'right' }}>Investimento</span>
+                          <span style={{ textAlign: 'right' }}>Receita Ads</span>
+                          <span style={{ textAlign: 'right' }}>ROAS</span>
+                          <span style={{ textAlign: 'right' }}>Metas</span>
+                        </div>
                         {c.contas.map((a) => {
+                          const f = figs[a.accountId] || { faturamento: '', investimento: '', receitaAds: '' };
+                          const vFat = mcParseNum(f.faturamento);
+                          const vInv = mcParseNum(f.investimento);
+                          const vRec = mcParseNum(f.receitaAds);
+                          const vazio = vFat == null && vInv == null && vRec == null;
+                          // razões ao vivo do que está digitado; nulas enquanto nada foi lançado
+                          const viva = vazio ? { roas: null, acos: null, tacos: null }
+                                             : mcRatios(vFat || 0, vInv || 0, vRec || 0);
                           // Meta de investimento é orçamento, não piso/teto (spec §6) — por isso
                           // não tem ✓/✗: mostra o % do orçamento usado, e só aparece quando há
                           // orçamento cadastrado (senão fica sem linha, não com zero/travessão
                           // poluindo a coluna).
                           const orcamento = mcParseNum(a.metas.investimento);
-                          const pctOrcamento = orcamento ? (a.totals.investimento / orcamento) * 100 : null;
+                          const pctOrcamento = orcamento && vInv != null ? (vInv / orcamento) * 100 : null;
+                          const campo = (chave) => (
+                            <input value={f[chave]}
+                                   onChange={(e) => setFigs((m) => ({ ...m, [a.accountId]: { ...f, [chave]: e.target.value } }))}
+                                   inputMode="decimal" placeholder="—"
+                                   style={{ width: '100%', textAlign: 'right', fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 7, background: 'var(--paper)', color: 'var(--ink)' }} />
+                          );
                           return (
                           <div key={a.accountId} style={{ display: 'grid', gridTemplateColumns: MC_COLS, gap: 10, padding: '8px 0', alignItems: 'center', fontSize: 12.5 }}>
                             <span style={{ color: 'var(--ink-2)' }}>
                               {a.marketplace}{a.conta ? ' · ' + a.conta : ''}
-                              <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {a.nReports} relat.</span>
+                              {vazio ? <span title="conta sem lançamento neste mês" style={{ color: 'var(--amber-ink)', marginLeft: 6 }}>⚠</span> : null}
                             </span>
-                            <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(a.totals.faturamento)}</span>
-                            <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(a.totals.investimento)}</span>
-                            <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcRoas(a.totals.roas)}</span>
+                            {campo('faturamento')}
+                            {campo('investimento')}
+                            {campo('receitaAds')}
+                            <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcRoas(viva.roas)}</span>
                             <span style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                               {/* metas vêm do cadastro já como texto BR ("4,00"), não como número — por
                                   isso não passam por mcRoas/mcPct (que chamam .toFixed); só o valor
-                                  realizado (a.totals.*, número puro de `ratios()`) usa essas funções.
-                                  ROAS não repete o valor aqui: a coluna à esquerda já mostra o realizado,
+                                  digitado (vFat/vInv/vRec, já convertido por mcParseNum) usa essas funções.
+                                  ROAS não repete o valor aqui: a coluna à esquerda já mostra o digitado,
                                   então esta linha traz só o selo. ACOS/TACOS não têm coluna própria, por
                                   isso mantêm valor + selo — a linha do ROAS fica com o mesmo wrapper de
                                   layout (flex, baseline) só que com um filho a menos, p/ não destoar. */}
                               <span style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                                <McMeta ok={a.atingiu.roas} meta={a.metas.roas} sufixo="x" />
+                                <McMeta ok={mcMetaStatus(viva.roas, a.metas.roas, 'piso')} meta={a.metas.roas} sufixo="x" />
                               </span>
                               <span style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                                <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{mcPct(a.totals.acos)}</span>
-                                <McMeta ok={a.atingiu.acos} meta={a.metas.acos} sufixo="%" />
+                                <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{mcPct(viva.acos)}</span>
+                                <McMeta ok={mcMetaStatus(viva.acos, a.metas.acos, 'teto')} meta={a.metas.acos} sufixo="%" />
                               </span>
                               <span style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                                <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{mcPct(a.totals.tacos)}</span>
-                                <McMeta ok={a.atingiu.tacos} meta={a.metas.tacos} sufixo="%" />
+                                <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{mcPct(viva.tacos)}</span>
+                                <McMeta ok={mcMetaStatus(viva.tacos, a.metas.tacos, 'teto')} meta={a.metas.tacos} sufixo="%" />
                               </span>
                               {pctOrcamento != null ? (
                                 <span style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
