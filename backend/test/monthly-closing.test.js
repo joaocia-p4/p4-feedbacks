@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { monthRange, accountInMonth, consolidate, metaStatus } = require('../src/lib/monthlyClosing');
+const { monthRange, accountInMonth, consolidate, metaStatus, buildMonthlyClosing } = require('../src/lib/monthlyClosing');
 
 // ── janela do mês ────────────────────────────────────────────────────────────
 test('mês de 31 dias', () => {
@@ -129,4 +129,131 @@ test('direcao desconhecida lança erro', () => {
 test('valor 0 é válido (falsy mas não null/undefined)', () => {
   // com teto, 0 < ceiling → true
   assert.equal(metaStatus(0, '20,00', 'teto'), true);
+});
+
+// ── montagem ─────────────────────────────────────────────────────────────────
+function conta(id, extra) {
+  return {
+    id, marketplace: 'Mercado Livre', conta: '',
+    metaInvestimento: '', metaRoas: '', metaAcos: '', metaTacos: '',
+    dataEntrada: '2025-01-01', dataEncerramento: null, criadoEm: '2025-01-01',
+    ...extra,
+  };
+}
+function cliente(id, loja, contas, extra) {
+  return { id, loja, analista: 'Ana', statusTag: 'em-dia', contas, ...extra };
+}
+function relDe(account_id, periodo_fim, faturamento, investimento, receita_ads) {
+  return { account_id, periodo_fim, faturamento, investimento, receita_ads, vendas: 0, vendas_ads: 0 };
+}
+
+test('totais do cliente somam as contas e recalculam as razões', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [cliente('c1', 'Diego Block', [conta('a1'), conta('a2', { marketplace: 'Shopee' })])],
+    reports: [
+      relDe('a1', '2026-07-12', 39100, 5200, 25000),
+      relDe('a2', '2026-07-12', 9100, 1210, 5000),
+    ],
+    closings: [],
+  });
+  const c = out.clients[0];
+  assert.equal(c.totals.faturamento, 48200);
+  assert.equal(c.totals.investimento, 6410);
+  assert.equal(c.totals.roas, +((30000 / 6410).toFixed(2)));
+  assert.equal(c.contas.length, 2);
+  assert.equal(c.nReports, 2);
+});
+
+test('relatório de outro mês não entra na conta do mês', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [cliente('c1', 'Loja', [conta('a1')])],
+    reports: [relDe('a1', '2026-06-28', 999, 99, 99), relDe('a1', '2026-07-05', 100, 10, 40)],
+    closings: [],
+  });
+  assert.equal(out.clients[0].nReports, 1);
+  assert.equal(out.clients[0].totals.faturamento, 100);
+});
+
+test('conta ativa sem relatório entra zerada', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [cliente('c1', 'Loja', [conta('a1')])],
+    reports: [],
+    closings: [],
+  });
+  assert.equal(out.clients.length, 1);
+  assert.equal(out.clients[0].nReports, 0);
+  assert.equal(out.clients[0].totals.faturamento, 0);
+  assert.equal(out.resumo.semRelatorio, 1);
+});
+
+test('cliente cujas contas não existiam no mês some da lista', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [cliente('c1', 'Novo', [conta('a1', { dataEntrada: '2026-09-01', criadoEm: '2026-09-01' })])],
+    reports: [],
+    closings: [],
+  });
+  assert.deepEqual(out.clients, []);
+  assert.equal(out.resumo.clientes, 0);
+});
+
+test('atingiu vem resolvido por conta, com null para meta ausente', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [cliente('c1', 'Loja', [conta('a1', { metaRoas: '4,00', metaAcos: '20,00' })])],
+    reports: [relDe('a1', '2026-07-12', 10000, 1000, 5000)], // roas 5x, acos 20%
+    closings: [],
+  });
+  const a = out.clients[0].contas[0];
+  assert.equal(a.atingiu.roas, true);
+  assert.equal(a.atingiu.acos, true);
+  assert.equal(a.atingiu.tacos, null); // sem meta cadastrada
+});
+
+test('resumo conta fechados e pendentes; semRelatorio cruza com pendentes', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [
+      cliente('c1', 'A', [conta('a1')]),
+      cliente('c2', 'B', [conta('a2')]),
+    ],
+    reports: [relDe('a1', '2026-07-12', 100, 10, 40)],
+    closings: [{ client_id: 'c1', ym: '2026-07', observacoes: 'ok', fechado_em: '2026-08-01', fechado_por: 'u1' }],
+  });
+  assert.equal(out.resumo.clientes, 2);
+  assert.equal(out.resumo.fechados, 1);
+  assert.equal(out.resumo.pendentes, 1);
+  assert.equal(out.resumo.semRelatorio, 1); // c2, que também é pendente
+});
+
+test('linha com observação salva mas não fechada continua pendente', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [cliente('c1', 'A', [conta('a1')])],
+    reports: [],
+    closings: [{ client_id: 'c1', ym: '2026-07', observacoes: 'rascunho', fechado_em: null, fechado_por: null }],
+  });
+  assert.equal(out.resumo.fechados, 0);
+  assert.equal(out.clients[0].closing.observacoes, 'rascunho');
+});
+
+test('ordena pendentes antes de fechados, depois por faturamento desc', () => {
+  const out = buildMonthlyClosing({
+    ym: '2026-07',
+    clients: [
+      cliente('c1', 'Fechado grande', [conta('a1')]),
+      cliente('c2', 'Pendente pequeno', [conta('a2')]),
+      cliente('c3', 'Pendente grande', [conta('a3')]),
+    ],
+    reports: [
+      relDe('a1', '2026-07-12', 90000, 1, 1),
+      relDe('a2', '2026-07-12', 100, 1, 1),
+      relDe('a3', '2026-07-12', 5000, 1, 1),
+    ],
+    closings: [{ client_id: 'c1', ym: '2026-07', observacoes: '', fechado_em: '2026-08-01', fechado_por: 'u1' }],
+  });
+  assert.deepEqual(out.clients.map((c) => c.loja), ['Pendente grande', 'Pendente pequeno', 'Fechado grande']);
 });
