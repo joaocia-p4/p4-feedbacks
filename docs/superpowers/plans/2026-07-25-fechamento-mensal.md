@@ -1110,11 +1110,14 @@ const express = require('express');
 const { authenticate } = require('../middleware/auth');
 const { asyncHandler, badRequest } = require('../lib/errors');
 const closingService = require('../services/closingService');
+const p4 = require('../lib/p4');
 
 const router = express.Router();
 router.use(authenticate);
 
-const mesCorrente = () => new Date().toISOString().slice(0, 7);
+// fuso do negocio, nao UTC: dia 31 as 21h em SP ja e dia 1 em UTC, e o padrao
+// abriria no mes seguinte justamente na noite do fechamento
+const mesCorrente = () => p4.todayISO().slice(0, 7);
 
 router.get(
   '/',
