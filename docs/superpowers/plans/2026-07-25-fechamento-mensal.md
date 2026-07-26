@@ -1259,9 +1259,15 @@ function mcShiftYm(ym, delta) {
   const d = new Date(Date.UTC(y, m - 1 + delta, 1));
   return d.toISOString().slice(0, 7);
 }
-function mcHoje() { return new Date().toISOString().slice(0, 7); }
+// data LOCAL, nao UTC: a partir das ~21h no Brasil o toISOString ja virou o dia,
+// e a tela abriria no mes seguinte justamente na noite do fechamento
+function mcHoje() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
-const mcMoney = (v) => (v ? window.fmtMoneyShort(v) : '—');
+// "—" so para ausencia; R$ 0,00 e um fato diferente de "sem dado"
+const mcMoney = (v) => (v == null ? '—' : window.fmtMoneyShort(v));
 const mcRoas = (v) => (v == null ? '—' : v.toFixed(2).replace('.', ',') + 'x');
 const mcPct = (v) => (v == null ? '—' : v.toFixed(1).replace('.', ',') + '%');
 
@@ -1282,20 +1288,26 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState('');
+  const [recarregar, setRecarregar] = React.useState(0); // bump = refetch (usado ao salvar)
 
-  const load = React.useCallback(async (alvo) => {
-    setLoading(true); setErr('');
-    try {
-      if (!window.P4_API || !window.P4_API.isLogged()) throw new Error('Faça login para ver o fechamento.');
-      setData(await window.P4_API.getClosings(alvo));
-    } catch (e) {
-      setErr(e.message || 'Falha ao carregar o fechamento.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => { load(ym); }, [ym, load]);
+  // guarda de resposta obsoleta: clicar rapido no ◀/▶ deixa varias chamadas no ar
+  // e, se voltarem fora de ordem, a antiga sobrescreveria a nova
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true); setErr('');
+      try {
+        if (!window.P4_API || !window.P4_API.isLogged()) throw new Error('Faça login para ver o fechamento.');
+        const d = await window.P4_API.getClosings(ym);
+        if (!cancel) setData(d);
+      } catch (e) {
+        if (!cancel) setErr(e.message || 'Falha ao carregar o fechamento.');
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [ym, recarregar]);
 
   const r = (data && data.resumo) || {};
 
@@ -1416,7 +1428,7 @@ Dentro de `MonthlyClosing`, junto dos outros `useState`:
     try {
       await window.P4_API.saveClosing(c.clientId, ym, { observacoes: obs, fechado });
       toast(fechado ? 'Mês fechado.' : 'Mês reaberto.');
-      await load(ym);
+      setRecarregar((n) => n + 1); // dispara o efeito de carga, que tem guarda de obsolescencia
     } catch (e) {
       toast(e.message || 'Falha ao salvar.');
     } finally {
