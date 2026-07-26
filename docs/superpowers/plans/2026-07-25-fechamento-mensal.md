@@ -191,6 +191,8 @@ git commit -m "refactor(metricas): mes do relatorio e razoes em lib compartilhad
 
 A regra de "quem entra no mês" usa a data de entrada da conta com fallback para a criação. O objeto pré-enriquecimento já tem `criadoEm` (`clientService.js:111`), mas `enrichAccount` não repassa.
 
+**Normalize com `p4.businessDateISO`, nunca com `String(...).slice(0, 10)`.** No Postgres `criado_em` é `timestamp` e chega como objeto `Date`; `String(new Date(...)).slice(0,10)` devolve `"Mon Feb 09"`, dado corrompido em silêncio. `businessDateISO` já é o normalizador usado para esse mesmo campo em `contaAtrasada` e em `clientService`, e devolve `null` para valor ausente.
+
 **Files:**
 - Modify: `backend/src/lib/clientAggregate.js` (retorno de `enrichAccount`)
 - Modify: `backend/test/atraso.test.js` (um teste novo no fim)
@@ -212,6 +214,15 @@ test('conta enriquecida repassa criadoEm', () => {
   );
   assert.equal(c.contas[0].criadoEm, '2026-02-10');
 });
+
+test('conta enriquecida normaliza criadoEm vindo como Date (forma do Postgres)', () => {
+  const c = enrichClient(
+    { id: 'c1', loja: 'Teste', agenda: { freq: 'Semanal', diaSemana: 'Quarta' } },
+    [{ id: 'a1', marketplace: 'Shopee', ativo: true, criadoEm: new Date('2026-02-10T12:00:00Z'), reports: [] }],
+    { asOf: ASOF }
+  );
+  assert.equal(c.contas[0].criadoEm, '2026-02-10');
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -225,7 +236,7 @@ Em `backend/src/lib/clientAggregate.js`, no objeto retornado por `enrichAccount`
 
 ```js
     dataEncerramento: acc.dataEncerramento || null,
-    criadoEm: acc.criadoEm ? String(acc.criadoEm).slice(0, 10) : null,
+    criadoEm: p4.businessDateISO(acc.criadoEm),
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
