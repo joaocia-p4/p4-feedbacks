@@ -63,9 +63,15 @@ o aviso de conta incompleta. Com linha e valor `0` é uma afirmação — a cont
 faturou. A tela precisa distinguir os dois; é a mesma distinção que motivou a
 correção de `mcMoney` na revisão anterior.
 
-Não há backfill: a funcionalidade nunca foi publicada, então não existe
-fechamento em produção. Também **não** se importa nada dos relatórios para cá —
-importar seria repor justamente o número que se decidiu abandonar.
+**Todo mês é lançado do zero.** Não há backfill, não se importa nada dos
+relatórios, e não se copia o mês anterior como ponto de partida. Não é uma
+simplificação temporária — é a regra.
+
+Importar dos relatórios seria repor justamente o número que se decidiu
+abandonar. Copiar o mês anterior seria pior: os campos chegariam preenchidos com
+valores plausíveis de outro período, e o custo de revisar cada um passa a ser
+maior que o de digitar. Campo vazio é honesto sobre o que ainda não foi
+informado; campo herdado não é.
 
 ## 4. Só três campos
 
@@ -207,6 +213,7 @@ Saem os testes de `consolidate`. Entram, todos puros e sem banco:
 ## 12. Fora de escopo
 
 - Importar lançamentos de planilha.
-- Copiar o mês anterior como ponto de partida.
+- Qualquer forma de pré-preencher os campos (mês anterior, relatórios, médias) —
+  ver seção 3: é decisão, não lacuna.
 - Histórico de alterações dos lançamentos (só `atualizado_em`/`atualizado_por`).
 - Qualquer mudança no Painel CS ou no relatório semanal.
