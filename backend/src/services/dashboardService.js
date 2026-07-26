@@ -2,6 +2,7 @@
 const db = require('../db/knex');
 const p4 = require('../lib/p4');
 const clientService = require('./clientService');
+const { byManager, countActiveAccounts } = require('../lib/dashboardAggregates');
 
 // Segunda-feira da semana de uma data ISO (salvo_em em UTC → data no fuso do negócio).
 function weekStartISO(isoStr) {
@@ -40,20 +41,10 @@ async function getDashboard(user) {
     if (w) byWeek[w] = (byWeek[w] || 0) + 1;
   }
   const reportsByWeek = weekStarts.map((w) => ({ weekStart: w, count: byWeek[w] || 0 }));
-  const reportsThisWeek = byWeek[weekStarts[weekStarts.length - 1]] || 0;
-  const reportsLastWeek = byWeek[weekStarts[weekStarts.length - 2]] || 0;
 
   // ── clientes por gestor ───────────────────────────────────────────────────
-  const mgr = new Map();
-  for (const c of clients) {
-    const k = c.analista || '—';
-    if (!mgr.has(k)) mgr.set(k, { analista: k, clients: 0, overdue: 0, reports: 0 });
-    const e = mgr.get(k);
-    e.clients++;
-    e.reports += c.n || 0;
-    if (c.statusTag === 'atrasado') e.overdue++;
-  }
-  const clientsByManager = [...mgr.values()].sort((a, b) => b.clients - a.clients);
+  // Único ponto do painel que enxerga encerrados: usa `allClients`, não `clients`.
+  const clientsByManager = byManager(allClients);
 
   // ── entrada de clientes por mês ───────────────────────────────────────────
   const byMonth = {};
@@ -161,12 +152,10 @@ async function getDashboard(user) {
   const totalClients = clients.length;
   const overdueClients = overdue.length;
   const clientsNoReports = clients.filter((c) => (c.n || 0) === 0).length;
-  const totalReports = reports.length;
-  const roasVals = clients.map((c) => c.roasW).filter((v) => v > 0);
-  const avgRoas = roasVals.length ? +(roasVals.reduce((a, b) => a + b, 0) / roasVals.length).toFixed(2) : 0;
-  const totalRevenue = clients.reduce((a, c) => a + (c.fatLatest || 0), 0);
+  // contas em operação na carteira viva (encerrada sai, pausada fica)
+  const totalAccounts = countActiveAccounts(clients);
+  const accountsPerClient = totalClients ? +(totalAccounts / totalClients).toFixed(1) : 0;
   const onTimeRate = totalClients ? Math.round((1 - overdueClients / totalClients) * 100) : 100;
-  const reportsPerClient = totalClients ? +(totalReports / totalClients).toFixed(1) : 0;
   // pausados/onboarding não são cobrados → fora da contagem "para enviar hoje"
   const dueToday = clients.filter((c) => c.statusTag !== 'pausado' && c.statusTag !== 'onboarding' && p4.isDueOn(c.agenda, p4.todayISO())).length;
 
@@ -174,15 +163,11 @@ async function getDashboard(user) {
     today: p4.todayISO(),
     totals: {
       totalClients,
+      totalAccounts,
+      accountsPerClient,
       overdueClients,
       onTimeRate,
-      totalReports,
-      reportsThisWeek,
-      reportsLastWeek,
       clientsNoReports,
-      avgRoas,
-      totalRevenue,
-      reportsPerClient,
       dueToday,
     },
     reportsByWeek,
