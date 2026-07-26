@@ -272,12 +272,16 @@ git commit -m "feat(contas): expor criadoEm na conta enriquecida"
 
 exports.up = async function up(knex) {
   await knex.schema.createTable('monthly_closings', (t) => {
-    t.uuid('id').primary();
-    t.uuid('client_id').notNullable().references('id').inTable('clients').onDelete('CASCADE');
+    // uuid vai como t.string, NUNCA t.uuid: as demais tabelas usam string, e no
+    // Postgres t.uuid vira coluna uuid nativa — a FK uuid -> varchar e rejeitada
+    // na criacao e derruba o boot. No SQLite o erro nao aparece (char e varchar
+    // dividem a mesma afinidade TEXT).
+    t.string('id').primary();
+    t.string('client_id').notNullable().references('id').inTable('clients').onDelete('CASCADE');
     t.string('ym', 7).notNullable(); // '2026-07'
     t.text('observacoes');
     t.timestamp('fechado_em');
-    t.uuid('fechado_por').references('id').inTable('users').onDelete('SET NULL');
+    t.string('fechado_por').references('id').inTable('users').onDelete('SET NULL');
     t.timestamp('criado_em').notNullable().defaultTo(knex.fn.now());
     t.timestamp('atualizado_em').notNullable().defaultTo(knex.fn.now());
     t.unique(['client_id', 'ym']);
