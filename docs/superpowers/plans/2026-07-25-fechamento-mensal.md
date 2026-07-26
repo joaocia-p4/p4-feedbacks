@@ -633,7 +633,10 @@ function metaStatus(valor, metaRaw, direcao) {
   const meta = p4.parseNum(metaRaw);
   if (!(meta > 0)) return null;
   if (valor === null || valor === undefined) return null;
-  return direcao === 'piso' ? valor >= meta : valor <= meta;
+  // sem default silencioso: errar a direcao inverteria o resultado de negocio
+  if (direcao === 'piso') return valor >= meta;
+  if (direcao === 'teto') return valor <= meta;
+  throw new Error(`Direção de meta inválida: ${direcao}`);
 }
 ```
 
