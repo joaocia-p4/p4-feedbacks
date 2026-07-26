@@ -34,6 +34,11 @@ const num = (v) => (Number(v) || 0);
 // direcao: 'piso' (ROAS — quanto mais alto melhor) | 'teto' (ACOS/TACOS).
 // Devolve null quando não há meta ou não há valor: meta ausente NÃO é meta
 // não batida, e a tela precisa distinguir "—" de "✗".
+// Duplicada de propósito em `mcMetaStatus()`
+// (design_handoff_sistema_feedbacks/p4-closing.jsx), que dá a prévia ao
+// digitar sem esperar o backend. Esta aqui é a versão testada e é o que vai
+// em `atingiu` no payload; a outra não tem cobertura de teste. Mudou a regra
+// aqui, muda lá também — as duas têm que ficar em sincronia.
 function metaStatus(valor, metaRaw, direcao) {
   const meta = p4.parseNum(metaRaw);
   if (!(meta > 0)) return null;

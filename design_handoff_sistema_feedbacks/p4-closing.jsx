@@ -27,6 +27,10 @@ function mcHoje() {
 }
 
 const mcMoney = (v) => (v == null ? '—' : window.fmtMoneyShort(v));
+// Como mcMoney, mas sem abreviar acima de R$ 100 mil: esta tela é o registro
+// exato do mês (spec do fechamento manual), então o total do cliente precisa
+// bater, dígito a dígito, com a soma manual das contas abaixo dele.
+const mcMoneyFull = (v) => (v == null ? '—' : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const mcRoas = (v) => (v == null ? '—' : v.toFixed(2).replace('.', ',') + 'x');
 const mcPct = (v) => (v == null ? '—' : v.toFixed(1).replace('.', ',') + '%');
 
@@ -58,7 +62,11 @@ function mcRatios(fat, inv, rec) {
   };
 }
 
-// Mesma regra do `metaStatus()` do backend, pelo mesmo motivo: prévia ao digitar.
+// Duplicada de propósito de `metaStatus()`
+// (backend/src/lib/monthlyClosing.js): esta cópia serve só para dar retorno
+// imediato enquanto se digita, antes do refetch. A fonte de verdade continua
+// sendo a de lá (é a testada, e é o que o backend manda em `atingiu`). Mudou
+// a regra lá, muda aqui também — as duas têm que ficar em sincronia.
 function mcMetaStatus(valor, metaRaw, direcao) {
   const meta = mcParseNum(metaRaw);
   if (!(meta > 0)) return null;
@@ -66,7 +74,8 @@ function mcMetaStatus(valor, metaRaw, direcao) {
   return direcao === 'piso' ? valor >= meta : valor <= meta;
 }
 
-// ✓ / ✗ / — conforme o backend já resolveu em `atingiu`
+// ✓ / ✗ / — conforme `mcMetaStatus()` acima (prévia local; o `atingiu` que
+// vem do backend não é lido nesta tela).
 function McMeta({ ok, meta, sufixo }) {
   if (ok === null || ok === undefined) return <span style={{ color: 'var(--muted)' }}>—</span>;
   return (
@@ -246,9 +255,9 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
                         <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 11 }}> · {c.analista}</span>
                         {c.statusTag ? <span style={{ marginLeft: 8 }}><window.StatusTag tag={c.statusTag} /></span> : null}
                       </span>
-                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(c.totals.faturamento)}</span>
-                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(c.totals.investimento)}</span>
-                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoney(c.totals.receitaAds)}</span>
+                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoneyFull(c.totals.faturamento)}</span>
+                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoneyFull(c.totals.investimento)}</span>
+                      <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcMoneyFull(c.totals.receitaAds)}</span>
                       <span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono',monospace" }}>{mcRoas(c.totals.roas)}</span>
                       <span style={{ textAlign: 'right', fontSize: 11.5, fontWeight: 600, color: c.closing && c.closing.fechadoEm ? 'var(--brand-ink)' : 'var(--muted)' }}>
                         {c.closing && c.closing.fechadoEm ? '✓ fechado' : '● a fechar'}

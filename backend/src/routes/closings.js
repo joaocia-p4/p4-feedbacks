@@ -40,8 +40,14 @@ router.put(
 );
 
 // Valor de lançamento: número finito e não negativo, ou null (campo em branco).
+// Teto de 999999999999,99 = maior valor que cabe em decimal(14,2) (12 dígitos
+// inteiros + 2 casas). Sem isso, um valor maior passa na validação e só
+// estoura na gravação (numeric field overflow no Postgres), virando um 500
+// sem explicação em vez de um erro claro pro analista.
+const VALOR_MAXIMO = 999999999999.99;
 function valorValido(v) {
-  return v === null || v === undefined || (typeof v === 'number' && Number.isFinite(v) && v >= 0);
+  return v === null || v === undefined
+    || (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= VALOR_MAXIMO);
 }
 
 router.put(
@@ -56,7 +62,7 @@ router.put(
         throw badRequest('Cada conta precisa de um accountId.');
       }
       if (!valorValido(c.faturamento) || !valorValido(c.investimento) || !valorValido(c.receitaAds)) {
-        throw badRequest('Faturamento, investimento e receita de Ads devem ser números não negativos ou vazios.');
+        throw badRequest('Faturamento, investimento e receita de Ads devem ser números não negativos, no máximo 999.999.999.999,99, ou vazios.');
       }
     }
     res.json(await closingService.saveFigures(req.user, clientId, ym, contas));
