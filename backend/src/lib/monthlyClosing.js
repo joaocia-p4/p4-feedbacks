@@ -1,5 +1,7 @@
 // monthlyClosing — regras do fechamento mensal. Puras: sem banco, sem relógio.
 
+const { ratios } = require('./metrics');
+
 // Primeiro e último dia de 'YYYY-MM'. Date.UTC(y, m, 0) = último dia do mês m
 // (índice m já é o mês seguinte em base 0), então cobre bissexto de graça.
 function monthRange(ym) {
@@ -24,4 +26,22 @@ function accountInMonth(conta, ym, temRelatorio) {
   return true; // sem data de entrada conhecida: assume que já existia
 }
 
-module.exports = { monthRange, accountInMonth };
+const num = (v) => (Number(v) || 0);
+
+// Soma os relatórios do período e deriva as razões DA SOMA. Média de razões
+// daria peso igual a uma semana de R$100 e a uma de R$100.000.
+function consolidate(rows) {
+  const t = (rows || []).reduce(
+    (a, r) => ({
+      faturamento: a.faturamento + num(r.faturamento),
+      vendas: a.vendas + num(r.vendas),
+      receitaAds: a.receitaAds + num(r.receita_ads),
+      vendasAds: a.vendasAds + num(r.vendas_ads),
+      investimento: a.investimento + num(r.investimento),
+    }),
+    { faturamento: 0, vendas: 0, receitaAds: 0, vendasAds: 0, investimento: 0 }
+  );
+  return { ...t, ...ratios(t.faturamento, t.investimento, t.receitaAds) };
+}
+
+module.exports = { monthRange, accountInMonth, consolidate };

@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { monthRange, accountInMonth } = require('../src/lib/monthlyClosing');
+const { monthRange, accountInMonth, consolidate } = require('../src/lib/monthlyClosing');
 
 // ── janela do mês ────────────────────────────────────────────────────────────
 test('mês de 31 dias', () => {
@@ -53,4 +53,39 @@ test('dataEntrada manda mais que criadoEm', () => {
 
 test('sem nenhuma data de entrada, assume que sempre existiu', () => {
   assert.equal(accountInMonth({ dataEntrada: null, criadoEm: null }, JUL, false), true);
+});
+
+// ── consolidação ─────────────────────────────────────────────────────────────
+function rel(faturamento, investimento, receita_ads, vendas, vendas_ads) {
+  return { faturamento, investimento, receita_ads, vendas: vendas || 0, vendas_ads: vendas_ads || 0 };
+}
+
+test('soma os valores absolutos de todos os relatórios', () => {
+  const t = consolidate([rel(1000, 100, 400, 10, 4), rel(2000, 300, 900, 20, 9)]);
+  assert.equal(t.faturamento, 3000);
+  assert.equal(t.investimento, 400);
+  assert.equal(t.receitaAds, 1300);
+  assert.equal(t.vendas, 30);
+  assert.equal(t.vendasAds, 13);
+});
+
+test('roas do mês é ponderado, não média das semanas', () => {
+  // A: 100 → 1000 (10x) · B: 900 → 900 (1x). Média simples = 5,5x. Ponderado = 1,9x.
+  const t = consolidate([rel(0, 100, 1000), rel(0, 900, 900)]);
+  assert.equal(t.roas, 1.9);
+});
+
+test('lista vazia devolve tudo zerado e razões nulas', () => {
+  const t = consolidate([]);
+  assert.equal(t.faturamento, 0);
+  assert.equal(t.investimento, 0);
+  assert.equal(t.roas, null);
+  assert.equal(t.acos, null);
+  assert.equal(t.tacos, null);
+});
+
+test('campos ausentes ou textuais não viram NaN', () => {
+  const t = consolidate([{ faturamento: null, investimento: undefined }, rel(500, 50, 200)]);
+  assert.equal(t.faturamento, 500);
+  assert.equal(t.investimento, 50);
 });
