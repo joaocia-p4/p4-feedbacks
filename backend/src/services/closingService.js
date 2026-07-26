@@ -3,24 +3,11 @@
 const { v4: uuid } = require('uuid');
 const db = require('../db/knex');
 const clientService = require('./clientService');
-const { notFound, forbidden } = require('../lib/errors');
-const { buildMonthlyClosing, monthRange } = require('../lib/monthlyClosing');
+const { notFound, forbidden, badRequest } = require('../lib/errors');
+const { buildMonthlyClosing } = require('../lib/monthlyClosing');
 
 function isValidYm(ym) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(ym || ''));
-}
-
-// Janela larga o bastante para pegar qualquer semana que atravesse a virada.
-// reportMonth decide em definitivo depois, em JS — isto aqui é só o recorte
-// da consulta, para não carregar o histórico inteiro.
-function queryWindow(ym) {
-  const { ini, fim } = monthRange(ym);
-  const desloca = (iso, dias) => {
-    const d = new Date(iso + 'T00:00:00Z');
-    d.setUTCDate(d.getUTCDate() + dias);
-    return d.toISOString().slice(0, 10);
-  };
-  return { de: desloca(ini, -45), ate: desloca(fim, 45) };
 }
 
 async function getMonthlyClosing(user, ym) {
@@ -31,33 +18,37 @@ async function getMonthlyClosing(user, ym) {
   const accountIds = clients.flatMap((c) => (c.contas || []).map((a) => a.id));
   const clientIds = clients.map((c) => c.id);
 
-  let reports = [];
+  let figures = [];
   if (accountIds.length) {
-    const { de, ate } = queryWindow(ym);
-    reports = await db('reports')
+    figures = await db('monthly_figures')
       .whereIn('account_id', accountIds)
-      .andWhereRaw('COALESCE(periodo_fim, periodo_ini, criado_em) BETWEEN ? AND ?', [de, ate])
-      .select('account_id', 'periodo_ini', 'periodo_fim', 'criado_em',
-              'faturamento', 'vendas', 'receita_ads', 'vendas_ads', 'investimento');
+      .andWhere({ ym })
+      .select('account_id', 'ym', 'faturamento', 'investimento', 'receita_ads');
   }
 
   const closings = clientIds.length
     ? await db('monthly_closings').whereIn('client_id', clientIds).andWhere({ ym })
     : [];
 
-  return buildMonthlyClosing({ clients, reports, closings, ym });
+  return buildMonthlyClosing({ clients, figures, closings, ym });
 }
 
-// Grava observação e/ou muda o estado do mês. A linha nasce no primeiro dos
-// dois eventos. Reabrir zera fechado_em/fechado_por e PRESERVA a observação.
-async function saveClosing(user, clientId, ym, { observacoes, fechado }) {
-  // escopo de escrita: analista só mexe no próprio cliente
+// Escopo de escrita: analista só mexe no próprio cliente. Devolve o cliente
+// enriquecido, que já vem filtrado por papel do listClients.
+async function clienteNoEscopo(user, clientId) {
   const { clients } = await clientService.listClients(user, {});
   const alvo = clients.find((c) => c.id === clientId);
   if (!alvo) throw notFound('Cliente não encontrado.');
   if (user.papel === 'analista' && alvo.analistaId !== user.id) {
     throw forbidden('Você só pode fechar o mês dos seus clientes.');
   }
+  return alvo;
+}
+
+// Grava observação e/ou muda o estado do mês. A linha nasce no primeiro dos
+// dois eventos. Reabrir zera fechado_em/fechado_por e PRESERVA a observação.
+async function saveClosing(user, clientId, ym, { observacoes, fechado }) {
+  await clienteNoEscopo(user, clientId);
 
   const agora = new Date().toISOString();
   const existente = await db('monthly_closings').where({ client_id: clientId, ym }).first();
@@ -88,4 +79,48 @@ async function saveClosing(user, clientId, ym, { observacoes, fechado }) {
   return { observacoes: row.observacoes || '', fechadoEm: row.fechado_em || null, fechadoPor: row.fechado_por || null };
 }
 
-module.exports = { getMonthlyClosing, saveClosing, isValidYm };
+// Grava em lote os lançamentos das contas de um cliente no mês.
+// Conta com os três valores nulos tem a linha REMOVIDA (volta a "não lançado") —
+// é a única forma de desfazer um lançamento feito na conta errada, já que
+// gravar 0 afirmaria que não faturou.
+async function saveFigures(user, clientId, ym, contas) {
+  const alvo = await clienteNoEscopo(user, clientId);
+  const doCliente = new Set((alvo.contas || []).map((a) => a.id));
+  for (const c of contas || []) {
+    if (!doCliente.has(c.accountId)) {
+      throw badRequest(`A conta ${c.accountId} não pertence a este cliente.`);
+    }
+  }
+
+  const agora = new Date().toISOString();
+  let salvos = 0;
+  let removidos = 0;
+
+  for (const c of contas || []) {
+    const vazio = c.faturamento == null && c.investimento == null && c.receitaAds == null;
+    if (vazio) {
+      removidos += await db('monthly_figures').where({ account_id: c.accountId, ym }).del();
+      continue;
+    }
+    const valores = {
+      faturamento: c.faturamento || 0,
+      investimento: c.investimento || 0,
+      receita_ads: c.receitaAds || 0,
+      atualizado_em: agora,
+      atualizado_por: user.id,
+    };
+    const existente = await db('monthly_figures').where({ account_id: c.accountId, ym }).first();
+    if (existente) {
+      await db('monthly_figures').where({ id: existente.id }).update(valores);
+    } else {
+      await db('monthly_figures').insert({
+        id: uuid(), account_id: c.accountId, ym, criado_em: agora, ...valores,
+      });
+    }
+    salvos++;
+  }
+
+  return { salvos, removidos };
+}
+
+module.exports = { getMonthlyClosing, saveClosing, saveFigures, isValidYm };
