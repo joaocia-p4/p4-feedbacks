@@ -13,9 +13,15 @@ function mcShiftYm(ym, delta) {
   const d = new Date(Date.UTC(y, m - 1 + delta, 1));
   return d.toISOString().slice(0, 7);
 }
-function mcHoje() { return new Date().toISOString().slice(0, 7); }
+// Componentes de data locais (não `toISOString`, que é UTC e vira o dia/mês
+// cedo demais para quem está no fuso de SP — mesmo truque do `localISO` em
+// p4-data.jsx, mas essa função não é exposta em `window`, por isso repetida aqui).
+function mcHoje() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
-const mcMoney = (v) => (v ? window.fmtMoneyShort(v) : '—');
+const mcMoney = (v) => (v == null ? '—' : window.fmtMoneyShort(v));
 const mcRoas = (v) => (v == null ? '—' : v.toFixed(2).replace('.', ',') + 'x');
 const mcPct = (v) => (v == null ? '—' : v.toFixed(1).replace('.', ',') + '%');
 
@@ -37,19 +43,25 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState('');
 
-  const load = React.useCallback(async (alvo) => {
-    setLoading(true); setErr('');
-    try {
-      if (!window.P4_API || !window.P4_API.isLogged()) throw new Error('Faça login para ver o fechamento.');
-      setData(await window.P4_API.getClosings(alvo));
-    } catch (e) {
-      setErr(e.message || 'Falha ao carregar o fechamento.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => { load(ym); }, [ym, load]);
+  // Guarda contra resposta atrasada: trocar de mês rápido no navegador dispara
+  // várias `getClosings` em paralelo; se a mais velha responder por último ela
+  // não pode sobrescrever os dados do mês atual (mesmo padrão do CSDashboard).
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true); setErr('');
+      try {
+        if (!window.P4_API || !window.P4_API.isLogged()) throw new Error('Faça login para ver o fechamento.');
+        const d = await window.P4_API.getClosings(ym);
+        if (!cancel) setData(d);
+      } catch (e) {
+        if (!cancel) setErr(e.message || 'Falha ao carregar o fechamento.');
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [ym]);
 
   const r = (data && data.resumo) || {};
 
