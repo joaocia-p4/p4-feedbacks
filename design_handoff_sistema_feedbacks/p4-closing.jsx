@@ -1,5 +1,5 @@
 // p4-closing.jsx — fechamento mensal dos clientes.
-// Consolidado do mês por cliente (expansível em contas) contra as metas.
+// Números do mês lançados por conta, comparados com as metas.
 
 const MC_MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -78,10 +78,6 @@ function McMeta({ ok, meta, sufixo }) {
 
 const MC_COLS = '1.6fr 1fr 1fr 1fr .7fr 1fr';
 //               conta  fatur invest recAds roas  metas/situação
-// Tags de status (vocabulário de p4-clients.jsx) cujo cliente não deve
-// relatório no mês — a falta de relatório não é negligência, então o aviso ⚠
-// de "sem relatório" não se aplica.
-const MC_SEM_RELATORIO_ESPERADO = new Set(['pausado', 'onboarding', 'encerrado']);
 
 function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
   const [ym, setYm] = React.useState(mcHoje);
@@ -143,17 +139,47 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
   };
 
   // `fechado` pode ser true (fechar), false (reabrir) ou undefined (só salvar
-  // a observação, sem mexer no estado aberto/fechado do mês — o backend trata
-  // `fechado` ausente do corpo como "não tocar", ver services/closingService.js).
+  // os lançamentos e a observação, sem mexer no estado aberto/fechado do mês —
+  // o backend trata `fechado` ausente do corpo como "não tocar", ver
+  // services/closingService.js).
+  // Uma ação para o usuário, duas chamadas por baixo, NESTA ORDEM: primeiro os
+  // lançamentos, depois a observação/estado. Se a primeira falhar a segunda nem
+  // dispara — fechar um mês cujos números não gravaram é pior que o inverso.
   const gravar = async (c, fechado) => {
     if (salvando) return;
     setSalvando(true);
     try {
+      const contas = c.contas.map((a) => {
+        const f = figs[a.accountId] || {};
+        return {
+          accountId: a.accountId,
+          faturamento: mcParseNum(f.faturamento),
+          investimento: mcParseNum(f.investimento),
+          receitaAds: mcParseNum(f.receitaAds),
+        };
+      });
+      await window.P4_API.saveFigures(c.clientId, ym, contas);
       await window.P4_API.saveClosing(c.clientId, ym, { observacoes: obs, fechado });
-      toast(fechado === true ? 'Mês fechado.' : fechado === false ? 'Mês reaberto.' : 'Observação salva.');
+      toast(fechado === true ? 'Mês fechado.' : fechado === false ? 'Mês reaberto.' : 'Lançamentos salvos.');
       setRecarregar((n) => n + 1); // dispara o efeito de carga, que tem guarda de obsolescência
     } catch (e) {
       toast(e.message || 'Falha ao salvar.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Reabrir só troca o estado do mês — não deve gravar (ou apagar) nenhum
+  // lançamento, por isso é uma função à parte que nunca chama saveFigures.
+  const reabrir = async (c) => {
+    if (salvando) return;
+    setSalvando(true);
+    try {
+      await window.P4_API.saveClosing(c.clientId, ym, { fechado: false });
+      toast('Mês reaberto.');
+      setRecarregar((n) => n + 1);
+    } catch (e) {
+      toast(e.message || 'Falha ao reabrir.');
     } finally {
       setSalvando(false);
     }
@@ -169,7 +195,7 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
           <div className="ch-top">
             <div>
               <h1>Fechamento mensal</h1>
-              <div className="ch-sub">Consolidado do mês por cliente, comparado com as metas cadastradas</div>
+              <div className="ch-sub">Números lançados no mês por cliente, comparados com as metas cadastradas</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button className="btn-line" onClick={() => setYm(mcShiftYm(ym, -1))} title="Mês anterior">◀</button>
@@ -179,7 +205,7 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
           </div>
 
           {loading ? (
-            <div className="empty"><b>Carregando…</b>Buscando os relatórios do mês.</div>
+            <div className="empty"><b>Carregando…</b>Buscando os lançamentos do mês.</div>
           ) : err ? (
             <div className="empty"><b>Não foi possível carregar</b>{err}</div>
           ) : !data.clients.length ? (
@@ -192,10 +218,10 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
                 <span style={{ color: 'var(--brand-ink)' }}><b>{r.fechados}</b> fechados</span>
                 <span style={{ color: 'var(--muted)' }}>·</span>
                 <span><b>{r.pendentes}</b> pendentes</span>
-                {r.semRelatorio ? (
+                {r.incompletos ? (
                   <>
                     <span style={{ color: 'var(--muted)' }}>·</span>
-                    <span style={{ color: 'var(--amber-ink)' }}>⚠ <b>{r.semRelatorio}</b> sem relatório</span>
+                    <span style={{ color: 'var(--amber-ink)' }}>⚠ <b>{r.incompletos}</b> incompletos</span>
                   </>
                 ) : null}
               </div>
@@ -215,7 +241,7 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
                          style={{ display: 'grid', gridTemplateColumns: MC_COLS, gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--line)', alignItems: 'center', fontSize: 13, cursor: 'pointer', opacity: c.closing && c.closing.fechadoEm ? .62 : 1 }}>
                       <span style={{ fontWeight: 600 }}>
                         <span style={{ color: 'var(--muted)', marginRight: 6 }}>{aberto === c.clientId ? '▾' : '▸'}</span>
-                        {c.nReports === 0 && !MC_SEM_RELATORIO_ESPERADO.has(c.statusTag) ? <span title="operou no mês mas ficou sem relatório" style={{ color: 'var(--amber-ink)' }}>⚠ </span> : null}
+                        {c.incompleto ? <span title="cliente com conta sem lançamento neste mês" style={{ color: 'var(--amber-ink)' }}>⚠ </span> : null}
                         {c.loja}
                         <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 11 }}> · {c.analista}</span>
                         {c.statusTag ? <span style={{ marginLeft: 8 }}><window.StatusTag tag={c.statusTag} /></span> : null}
@@ -307,14 +333,14 @@ function MonthlyClosing({ user, role, onLogout, onManageUsers, toast }) {
                                       placeholder="O que explica o resultado do mês? O que muda no próximo?"
                                       style={{ width: '100%', resize: 'vertical', fontFamily: "'Sora'", fontSize: 12.5, padding: '9px 11px', border: '1px solid var(--line)', borderRadius: 9, background: 'var(--paper)', color: 'var(--ink)' }} />
                           </label>
-                          {/* Salvar observação separa "escrever a nota" de "fechar o mês" (spec §7:
-                              a linha nasce ao salvar OU fechar) — sem ela, só dava pra guardar o
-                              texto fechando o mês, e corrigir a nota de um mês já fechado exigia
+                          {/* Salvar grava lançamentos + observação, separado de "fechar o mês" (spec
+                              §7: a linha nasce ao salvar OU fechar) — sem ele, só dava pra guardar
+                              números/texto fechando o mês, e corrigir um mês já fechado exigia
                               reabrir antes. `fechado` fica undefined: o backend trata undefined
                               como "não mexe no estado aberto/fechado" (ver `gravar` acima). */}
-                          <button className="btn-line" disabled={salvando} onClick={() => gravar(c)}>Salvar observação</button>
+                          <button className="btn-line" disabled={salvando} onClick={() => gravar(c)}>Salvar</button>
                           {c.closing && c.closing.fechadoEm ? (
-                            <button className="btn-line" disabled={salvando} onClick={() => gravar(c, false)}>Reabrir mês</button>
+                            <button className="btn-line" disabled={salvando} onClick={() => reabrir(c)}>Reabrir mês</button>
                           ) : (
                             <button className="btn-accent" disabled={salvando} onClick={() => gravar(c, true)}>Fechar mês</button>
                           )}
