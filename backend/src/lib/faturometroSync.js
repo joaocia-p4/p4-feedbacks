@@ -236,9 +236,20 @@ async function backfillStep(hojeISO) {
   const syncs = await db('faturometro_sync').whereIn('account_id', contas.map((c) => c.accountId));
   const porConta = new Map(syncs.map((s) => [s.account_id, s]));
 
+  // Rodízio entre as pendentes: a que foi tentada há mais tempo (ou nunca foi)
+  // vai primeiro — mesmo princípio do rodízio de reconciliação acima. marcarSync
+  // grava `atualizado_em` tanto no sucesso quanto no erro (reconcileAccount
+  // sempre passa por ali antes de devolver), então uma conta que falha sempre
+  // sai da frente da fila sozinha no ciclo seguinte, em vez de travar o
+  // backfill de todas as outras atrás dela.
   const pendente = contas
     .map((c) => ({ id: c.accountId, sync: porConta.get(c.accountId) }))
-    .find((x) => !x.sync || x.sync.backfill_status !== 'pronto');
+    .filter((x) => !x.sync || x.sync.backfill_status !== 'pronto')
+    .sort((a, b) => {
+      const ta = a.sync && a.sync.atualizado_em ? Date.parse(a.sync.atualizado_em) : 0;
+      const tb = b.sync && b.sync.atualizado_em ? Date.parse(b.sync.atualizado_em) : 0;
+      return ta - tb; // nunca tentada (0) vem primeiro; a mais recentemente tentada vai pro fim
+    })[0];
   if (!pendente) return null;
 
   // Retoma do dia anterior ao último preenchido; se nunca rodou, começa em hoje.

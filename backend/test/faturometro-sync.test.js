@@ -473,16 +473,19 @@ test('rodízio: conta nunca reconciliada entra antes de conta reconciliada há m
 });
 
 // ── backfill ─────────────────────────────────────────────────────────────────
-// backfillStep pega a primeira conta do escopo que não está 'pronto'. A partir
-// dos testes do motor acima (kick(), rodízio), que rodam runQueue() de verdade,
-// contas de testes anteriores (ex.: acc-livro) já ganharam linha em
-// faturometro_sync e ficam 'pendente'/'rodando' — sem isolar, elas ficariam na
-// frente da conta que cada teste abaixo quer observar. Mesma técnica do teste
-// de rodízio (que neutraliza reconciliado_em); aqui neutraliza-se backfill_status.
-async function isolarBackfill(exceto) {
+// backfillStep pega, entre as contas não-'pronto', a que tem o rodízio mais
+// atrasado (ver comentário no código de produção). A partir dos testes do
+// motor acima (kick(), rodízio), que rodam runQueue() de verdade, contas de
+// testes anteriores (ex.: acc-livro) já ganharam linha em faturometro_sync e
+// ficam 'pendente'/'rodando' — sem isolar, elas entrariam na disputa da conta
+// que cada teste abaixo quer observar. Mesma técnica do teste de rodízio da
+// reconciliação (que neutraliza reconciliado_em); aqui neutraliza-se
+// backfill_status. `isolarBackfill()` sem argumentos marca TODAS como pronto;
+// `isolarBackfill('a', 'b')` poupa as contas listadas.
+async function isolarBackfill(...exceto) {
   const contas = await faturometro.scopedAccounts();
   for (const c of contas) {
-    if (c.accountId === exceto) continue;
+    if (exceto.includes(c.accountId)) continue;
     await faturometro.marcarSync(c.accountId, { backfill_status: 'pronto' });
   }
 }
@@ -540,8 +543,82 @@ test('backfill que alcança o alvo marca a conta como pronta', async () => {
   assert.equal(sync.backfill_dia, '2026-07-01');
 });
 
-test('progresso é a fração de dias já preenchidos', async () => {
+// revisão pós-brief: uma conta cujo reconcileAccount falha sempre não pode
+// monopolizar backfillStep para sempre — o rodízio por atualizado_em (achado
+// Important da revisão) tem de tirá-la da frente da fila no ciclo seguinte.
+test('conta cujo reconcileAccount falha sempre não trava o backfill das demais', async () => {
+  await semear('acc-bf-quebrada', '3001');
+  await semear('acc-bf-sadia', '3002');
+  await isolarBackfill('acc-bf-quebrada', 'acc-bf-sadia');
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (accountId) => (
+    accountId === 'acc-bf-quebrada'
+      ? { pedidos: [], erro: { message: 'token revogado' } }
+      : { pedidos: [], erro: null }
+  );
+  try {
+    // 1º ciclo: nenhuma das duas tem sync ainda (empate em "nunca tentada");
+    // acc-bf-quebrada vem primeiro na ordem de scopedAccounts() (semeada
+    // antes) e falha logo no 1º dia — marcarSync(erro) grava atualizado_em.
+    const passo1 = await faturometro.backfillStep('2026-08-06');
+    assert.equal(passo1.conta, 'acc-bf-quebrada');
+
+    // 2º ciclo: acc-bf-quebrada acabou de ser tentada (atualizado_em recente);
+    // acc-bf-sadia, nunca tentada, passa a ser a mais atrasada do rodízio.
+    const passo2 = await faturometro.backfillStep('2026-08-06');
+    assert.equal(passo2.conta, 'acc-bf-sadia');
+  } finally { meli.ordersOfDay = original; }
+
+  const quebrada = await db('faturometro_sync').where({ account_id: 'acc-bf-quebrada' }).first();
+  assert.equal(quebrada.backfill_dia, null, 'conta que só falhou não pode ter avançado o marcador');
+  assert.ok(quebrada.erro, 'esperava o erro registrado');
+
+  const sadia = await db('faturometro_sync').where({ account_id: 'acc-bf-sadia' }).first();
+  assert.ok(sadia && sadia.backfill_dia, 'a conta sadia devia ter avançado, mesmo com a quebrada travada em erro');
+});
+
+// ── backfillProgress ─────────────────────────────────────────────────────────
+test('backfillProgress com zero contas no escopo devolve pronto, sem dividir por zero', async () => {
+  const outrosIds = (await db('accounts').select('id')).map((r) => r.id);
+  await db('accounts').whereIn('id', outrosIds).update({ ativo: false }); // esvazia o escopo
+  try {
+    const p = await faturometro.backfillProgress('2026-08-06');
+    assert.deepEqual(p, { pronto: true, progresso: 1, etapa: null });
+  } finally {
+    await db('accounts').whereIn('id', outrosIds).update({ ativo: true });
+  }
+});
+
+test('backfillProgress com todas as contas prontas devolve progresso exatamente 1', async () => {
+  await isolarBackfill(); // sem exceção: marca TODAS as contas do escopo como 'pronto'
   const p = await faturometro.backfillProgress('2026-08-06');
-  assert.ok(p.progresso >= 0 && p.progresso <= 1, `progresso fora de 0..1: ${p.progresso}`);
-  assert.equal(typeof p.pronto, 'boolean');
+  assert.equal(p.pronto, true);
+  assert.equal(p.progresso, 1);
+  assert.equal(p.etapa, null);
+});
+
+test('backfillProgress calcula a fração parcial certa, com denominador conhecido', async () => {
+  // Isola o escopo às duas contas deste teste (mesma técnica do teste de zero
+  // contas acima) para o denominador (totalDias × nº de contas) ser um número
+  // que dá para calcular à mão, não um número que depende de quantas contas
+  // os testes anteriores acumularam no arquivo.
+  const outrosIds = (await db('accounts').select('id')).map((r) => r.id);
+  await db('accounts').whereIn('id', outrosIds).update({ ativo: false });
+  try {
+    await semear('acc-bf-frac1', '3003');
+    await semear('acc-bf-frac2', '3004');
+    await faturometro.marcarSync('acc-bf-frac1', { backfill_status: 'pronto' }); // 100% feita
+    await faturometro.marcarSync('acc-bf-frac2', { backfill_dia: '2026-08-02' }); // 5 de 37 dias (08-06..08-02)
+
+    const p = await faturometro.backfillProgress('2026-08-06');
+    // totalDias: 2026-07-01..2026-08-06 inclusive = 31 (julho) + 6 (agosto) = 37.
+    // feitos: 37 (conta pronta) + 5 (conta parcial) = 42. total possível: 37*2 = 74.
+    // 42/74 = 0.567567... → arredonda para 0.57.
+    assert.equal(p.pronto, false, 'só uma das duas contas está pronta');
+    assert.equal(p.progresso, 0.57);
+    assert.equal(p.etapa, 'histórico do mês');
+  } finally {
+    await db('accounts').whereIn('id', outrosIds).update({ ativo: true });
+  }
 });
