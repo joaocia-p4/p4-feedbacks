@@ -333,3 +333,141 @@ test('expurgo apaga pedidos com mais de 70 dias sem tocar no consolidado', async
   const antigo = await db('faturometro_daily').where({ account_id: 'acc-purga', dia: '2026-01-10' }).first();
   assert.equal(Number(antigo.faturamento), 100, 'o consolidado tem de sobreviver ao expurgo');
 });
+
+// ── revisão pós-Task 6: corrida webhook × reconciliação e o dia que zera ─────
+// ml_user_id na faixa 2001-2006: novos, não usados em nenhum teste acima.
+//
+// Usa ingestOrder (fetchOrder + saveOrderRow) em vez de chamar saveOrderRow
+// direto: é o caminho REAL do webhook (handleNotification → ingestOrder →
+// fetchOrder → saveOrderRow), e é essa passada extra por fetchOrder que faz o
+// laço de reconciliação e o webhook chegarem no SELECT do mesmo order_id quase
+// junto — reproduz a corrida de forma consistente (era 40/40 antes do fix,
+// contra 0/40 com saveOrderRow chamado direto — este teste falha de verdade
+// com o código antigo, o outro formato não chegava a colidir no agendamento
+// do Node). É o teste que prova a correção.
+test('ingestOrder (webhook) e reconcileAccount concorrentes no MESMO pedido não lançam e o consolidado fecha coerente com o livro', async () => {
+  await semear('acc-corrida', '2001');
+  const orderId = '300';
+
+  const originalOrders = meli.ordersOfDay;
+  const originalFetch = meli.fetchOrder;
+  // A reconciliação enxerga o MESMO pedido que o webhook está buscando/gravando ao vivo.
+  meli.ordersOfDay = async () => ({ pedidos: [cru(300, 700, 3, 'b1')], erro: null });
+  meli.fetchOrder = async () => ({ ok: true, status: 200, data: cru(300, 700, 3, 'b1') });
+  try {
+    await assert.doesNotReject(Promise.all([
+      faturometro.reconcileAccount('acc-corrida', '2026-08-06'),
+      faturometro.ingestOrder('acc-corrida', orderId),
+    ]));
+  } finally { meli.ordersOfDay = originalOrders; meli.fetchOrder = originalFetch; }
+
+  const linhas = await db('faturometro_orders').where({ order_id: orderId });
+  assert.equal(linhas.length, 1, 'esperava uma única linha no livro para o mesmo order_id');
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-corrida', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 700, 'consolidado tem de bater com o livro, sem dobrar');
+  assert.equal(dia.pedidos, 1);
+});
+
+test('reconciliação com resposta boa e ZERO pedidos apaga o dia inteiro e zera o consolidado (não confundir com erro do ML)', async () => {
+  await semear('acc-zera', '2002');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(310, 250, 2, 'b1'), 'acc-zera'));
+  await faturometro.saveOrderRow(orderRow(cru(311, 150, 1, 'b2'), 'acc-zera'));
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null }); // resposta BOA, sem pedidos no dia
+  try {
+    const r = await faturometro.reconcileAccount('acc-zera', '2026-08-06');
+    assert.equal(r.ok, true);
+  } finally { meli.ordersOfDay = original; }
+
+  assert.equal(await db('faturometro_orders').where({ order_id: '310' }).first(), undefined);
+  assert.equal(await db('faturometro_orders').where({ order_id: '311' }).first(), undefined);
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-zera', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 0);
+  assert.equal(dia.pedidos, 0);
+});
+
+// ── revisão pós-Task 6: o motor de segundo plano ─────────────────────────────
+test('kick() com FATUROMETRO_BACKGROUND=off não dispara nada (a suíte de leitura não pode bater na API real)', async () => {
+  await semear('acc-off', '2003');
+
+  let chamou = false;
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => { chamou = true; return { pedidos: [], erro: null }; };
+  try {
+    assert.equal(process.env.FATUROMETRO_BACKGROUND, 'off', 'este arquivo roda com o motor desligado');
+    const retorno = faturometro.kick();
+    assert.equal(retorno, undefined, 'kick() não devolve promessa, por design');
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(chamou, false, 'com o motor desligado, ordersOfDay não pode ser chamado');
+  } finally { meli.ordersOfDay = original; }
+});
+
+test('kick() duas vezes seguidas não dispara dois ciclos simultâneos (a trava de reentrância)', async () => {
+  await semear('acc-trava', '2004');
+
+  let emAndamento = 0;
+  let maxSimultaneas = 0;
+  const originalConn = meli.getConnection;
+  meli.getConnection = async (accountId) => {
+    emAndamento += 1;
+    maxSimultaneas = Math.max(maxSimultaneas, emAndamento);
+    await new Promise((r) => setTimeout(r, 20)); // segura o ciclo no ar de propósito
+    emAndamento -= 1;
+    return originalConn(accountId);
+  };
+  const originalOrders = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null });
+
+  const originalEnv = process.env.FATUROMETRO_BACKGROUND;
+  process.env.FATUROMETRO_BACKGROUND = 'on'; // só para este teste — precisa do motor ligado
+  try {
+    faturometro.kick();
+    faturometro.kick(); // enquanto o primeiro ciclo ainda está no ar — tem de ser um no-op
+    await new Promise((r) => setTimeout(r, 400)); // espera o(s) ciclo(s) terminarem
+  } finally {
+    process.env.FATUROMETRO_BACKGROUND = originalEnv;
+    meli.getConnection = originalConn;
+    meli.ordersOfDay = originalOrders;
+  }
+
+  assert.equal(maxSimultaneas, 1, 'a trava "rodando" tem de impedir dois ciclos concorrentes');
+});
+
+test('rodízio: conta nunca reconciliada entra antes de conta reconciliada há muito tempo', async () => {
+  // Silencia as contas de testes anteriores (marca como recém-reconciliadas)
+  // para isolar o rodízio às duas contas deste teste.
+  const outras = await faturometro.scopedAccounts();
+  for (const c of outras) {
+    await faturometro.marcarSync(c.accountId, { reconciliado_em: new Date().toISOString() });
+  }
+
+  await semear('acc-rodizio-velha', '2005');
+  await faturometro.marcarSync('acc-rodizio-velha', { reconciliado_em: new Date(Date.now() - 60 * 60 * 1000).toISOString() }); // 1h atrás — vencida
+
+  await semear('acc-rodizio-nova', '2006'); // nunca reconciliada — faturometro_sync nem existe
+
+  const ordem = [];
+  const originalConn = meli.getConnection;
+  meli.getConnection = async (accountId) => {
+    ordem.push(accountId);
+    return originalConn(accountId);
+  };
+  const originalOrders = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null });
+
+  try {
+    await faturometro.runQueue(); // exportado para os testes — não depende do kick()/env
+  } finally {
+    meli.getConnection = originalConn;
+    meli.ordersOfDay = originalOrders;
+  }
+
+  const idxNova = ordem.indexOf('acc-rodizio-nova');
+  const idxVelha = ordem.indexOf('acc-rodizio-velha');
+  assert.notEqual(idxNova, -1, 'esperava a conta nunca reconciliada no rodízio');
+  assert.notEqual(idxVelha, -1, 'esperava a conta reconciliada há muito tempo no rodízio');
+  assert.ok(idxNova < idxVelha, 'conta nunca reconciliada (t=0) tem de vir antes da reconciliada há muito tempo');
+});

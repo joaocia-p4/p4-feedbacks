@@ -45,19 +45,28 @@ async function recalcDay(accountId, dia) {
     .merge(['faturamento', 'unidades', 'pedidos', 'atualizado_em']);
 }
 
+// Colunas que o upsert do livro atualiza quando o order_id já existe.
+// Compartilhada entre saveOrderRow (uma linha) e reconcileAccount (o dia
+// inteiro) — se as duas listas divergissem, o bug seria silencioso.
+const ORDER_UPSERT_COLS = ['account_id', 'dia', 'criado_em_ml', 'total_amount', 'unidades', 'comprador_id', 'atualizado_em'];
+
+// Upsert atômico de UMA linha do livro por order_id (a chave de idempotência) —
+// duas gravações concorrentes do MESMO pedido, de QUALQUER origem (webhook,
+// reconciliação, backfill), não colidem na PK e não lançam.
+async function upsertOrderRow(row) {
+  const dados = { ...row, atualizado_em: agora() };
+  await db('faturometro_orders').insert(dados).onConflict('order_id').merge(ORDER_UPSERT_COLS);
+  return dados;
+}
+
 // Grava (ou atualiza) uma linha do livro e reconsolida o dia afetado.
-// A escrita em si é um upsert atômico por order_id (a chave de idempotência) —
-// duas gravações concorrentes do MESMO pedido não colidem na PK e não lançam.
-// O SELECT prévio continua necessário só para saber se o pedido migrou de
-// dia/conta e, nesse caso, reconsolidar o consolidado antigo também.
+// A escrita em si é o upsert atômico acima. O SELECT prévio continua
+// necessário só para saber se o pedido migrou de dia/conta e, nesse caso,
+// reconsolidar o consolidado antigo também.
 async function saveOrderRow(row) {
   if (!row) return null;
   const existing = await db('faturometro_orders').where({ order_id: row.order_id }).first();
-  const dados = { ...row, atualizado_em: agora() };
-  await db('faturometro_orders')
-    .insert(dados)
-    .onConflict('order_id')
-    .merge(['account_id', 'dia', 'criado_em_ml', 'total_amount', 'unidades', 'comprador_id', 'atualizado_em']);
+  await upsertOrderRow(row);
 
   await recalcDay(row.account_id, row.dia);
   // Pedido que mudou de dia (ou de conta) deixa o consolidado antigo desatualizado.
@@ -145,11 +154,11 @@ async function reconcileAccount(accountId, dia) {
   if (ids.length) del.whereNotIn('order_id', ids);
   await del.del();
 
+  // Upsert atômico por linha (mesmo helper de saveOrderRow) — não read-then-write:
+  // o webhook pode estar gravando o MESMO order_id neste exato instante (mesma
+  // conta, mesmo pedido) e um SELECT-então-INSERT colidiria na PK.
   for (const row of rows) {
-    const existing = await db('faturometro_orders').where({ order_id: row.order_id }).first();
-    const dados = { ...row, atualizado_em: agora() };
-    if (existing) await db('faturometro_orders').where({ order_id: row.order_id }).update(dados);
-    else await db('faturometro_orders').insert(dados);
+    await upsertOrderRow(row);
   }
 
   await recalcDay(accountId, dia);
