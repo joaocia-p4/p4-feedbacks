@@ -72,6 +72,10 @@
   // painel (admin / cs)
   async function getDashboard() { return apiFetch('/dashboard'); }
 
+  // faturômetro (admin)
+  async function getFaturometro() { return apiFetch('/faturometro'); }
+  async function reconciliarFaturometro() { return apiFetch('/faturometro/reconciliar', { method: 'POST' }); }
+
   // fechamento mensal
   async function getClosings(ym) { return apiFetch('/closings' + qs({ ym })); }
   async function saveClosing(clientId, ym, payload) {
@@ -123,7 +127,7 @@
     listUsers, createUser, updateUser, deleteUser,
     listClients, getClient, createClient, updateClient, deleteClient,
     listReports, createReport, deleteReport,
-    getDashboard, getClosings, saveClosing, saveFigures,
+    getDashboard, getClosings, saveClosing, saveFigures, getFaturometro, reconciliarFaturometro,
     meliStatus, meliConnect, meliConnectLink, meliDisconnect, meliProbe, meliExplore, meliReportData, meliReputation, meliCampaigns,
   };
 })();

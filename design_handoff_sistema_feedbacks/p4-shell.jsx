@@ -80,6 +80,9 @@ function Sidebar({ user, role, screen, onNav }) {
   const docIcon = (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h6" /></svg>
   );
+  const boltIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>
+  );
   return (
     <aside className="app-side">
       <div className="as-brand">
@@ -99,6 +102,11 @@ function Sidebar({ user, role, screen, onNav }) {
         <button className={'as-item' + (screen === 'closing' ? ' on' : '')} onClick={() => onNav('closing')} title="Fechamento mensal">
           {docIcon}<span>Fechamento</span>
         </button>
+        {role === 'admin'
+          ? <button className={'as-item' + (screen === 'faturometro' ? ' on' : '')} onClick={() => onNav('faturometro')} title="Faturômetro">
+              {boltIcon}<span>Faturômetro</span>
+            </button>
+          : null}
         <button className={'as-item' + (screen === 'settings' ? ' on' : '')} onClick={() => onNav('settings')} title="Configurações">
           <I.cog size={18} /><span>Configurações</span>
         </button>
@@ -537,6 +545,8 @@ function App() {
     content = <window.CSDashboard user={user} role={role} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onOpenClient={openClient} onGotoClients={() => setScreen('clients')} toast={toast} />;
   } else if (screen === 'closing') {
     content = <window.MonthlyClosing user={user} role={role} onLogout={logout} onManageUsers={() => setUsersOpen(true)} toast={toast} />;
+  } else if (screen === 'faturometro') {
+    content = <window.Faturometro user={user} role={role} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onOpenClient={openClient} toast={toast} />;
   } else if (screen === 'new') {
     content = <window.NewClient user={user} role={role} users={usersList} onBack={back} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onSave={saveClient} toast={toast} />;
   } else if (screen === 'edit') {
