@@ -872,3 +872,71 @@ test('lista sai ordenada pelo faturamento de hoje', async () => {
   const valores = p.clientes.map((c) => c.hoje);
   assert.deepEqual(valores, [...valores].sort((a, b) => b - a));
 });
+
+// ── revisão pós-Task 8: cobertura do bloco `mes` ──────────────────────────────
+// getFaturometro() ganhou um parâmetro opcional `hojeISO` (mesmo padrão de
+// backfillProgress/backfillStep em lib/faturometroSync.js) só para estes
+// testes fixarem o dia sem depender do relógio real — a rota continua
+// chamando sem argumento. Isso permite testar a borda do dia 31 (mês anterior
+// sem o dia equivalente) sem falsear o relógio; a lógica PURA dessa borda já
+// está coberta por 'mês anterior sem o dia equivalente compara com o mês
+// inteiro' em test/faturometro.test.js — aqui cobrimos o fio até o payload.
+//
+// Datas em fevereiro/março/abril/maio de 2026: faixa inteiramente livre de
+// qualquer outro teste do arquivo (que só usa jan/jul/ago de 2026 — conferido
+// via grep), então nenhuma isolação extra (tipo isolarBackfill) é necessária:
+// nenhuma outra conta tem linha em faturometro_daily nesses meses.
+async function plantarDaily(accountId, dia, faturamento) {
+  await db('faturometro_daily').insert({
+    id: `d-${accountId}-${dia}`, account_id: accountId, dia,
+    faturamento, unidades: 0, pedidos: 1, atualizado_em: new Date().toISOString(),
+  }).onConflict(['account_id', 'dia']).merge(['faturamento', 'atualizado_em']);
+}
+
+test('mes soma o consolidado do mês corrente até hoje e compara com o dia equivalente do mês anterior', async () => {
+  await semear('acc-mes1', '6101');
+
+  // Mês corrente: maio/2026, hoje = dia 15. O dia 16 (depois de hoje) fica fora.
+  await plantarDaily('acc-mes1', '2026-05-01', 1000);
+  await plantarDaily('acc-mes1', '2026-05-10', 500);
+  await plantarDaily('acc-mes1', '2026-05-15', 200); // hoje: incluso e parcial
+  await plantarDaily('acc-mes1', '2026-05-16', 99999); // depois de hoje: fora
+
+  // Mês anterior: abril/2026 tem o dia 15 → dias completos (01..14, do
+  // consolidado) + o parcial do dia 15 (do LIVRO, cortado pelo horário atual —
+  // mesma técnica do teste "comparação com ontem" acima).
+  await plantarDaily('acc-mes1', '2026-04-01', 300);
+  await plantarDaily('acc-mes1', '2026-04-14', 100);
+  await plantarDaily('acc-mes1', '2026-04-16', 99999); // fora do intervalo de completos
+  await lancar('acc-mes1', 950, '2026-04-15', '00:00:01', 250, 1, 'b1'); // antes de agora: entra
+  await lancar('acc-mes1', 951, '2026-04-15', '23:59:59', 99999, 1, 'b2'); // depois de agora: fora
+
+  const p = await faturometroService.getFaturometro('2026-05-15');
+
+  assert.equal(p.mes.ym, '2026-05');
+  assert.equal(p.mes.faturamento, 1700, '1000 + 500 + 200 (hoje incluso), sem o dia seguinte');
+  assert.equal(p.mes.anteriorAteAgora, 650, '300 + 100 (completos) + 250 (parcial cortado pelo horário)');
+  assert.equal(p.mes.variacao, 1.6154, '(1700-650)/650, arredondado a 4 casas');
+  assert.equal(p.mes.anteriorParcial, true);
+});
+
+test('mes: mês anterior sem o dia equivalente compara com o mês inteiro (anteriorParcial=false)', async () => {
+  await semear('acc-mes2', '6102');
+
+  // Mês corrente: março/2026, hoje = dia 31 (o próprio último dia do mês).
+  await plantarDaily('acc-mes2', '2026-03-01', 500);
+  await plantarDaily('acc-mes2', '2026-03-31', 300); // hoje: incluso
+
+  // Mês anterior: fevereiro/2026 não tem dia 31 (28 dias, 2026 não é
+  // bissexto) → compara com o mês INTEIRO, sem parcial nenhum.
+  await plantarDaily('acc-mes2', '2026-02-01', 200);
+  await plantarDaily('acc-mes2', '2026-02-28', 100);
+
+  const p = await faturometroService.getFaturometro('2026-03-31');
+
+  assert.equal(p.mes.ym, '2026-03');
+  assert.equal(p.mes.faturamento, 800, '500 + 300 (hoje é o último dia do mês)');
+  assert.equal(p.mes.anteriorAteAgora, 300, '200 + 100 — fevereiro inteiro, sem dia 31');
+  assert.equal(p.mes.variacao, 1.6667, '(800-300)/300, arredondado a 4 casas');
+  assert.equal(p.mes.anteriorParcial, false, 'fevereiro não tem dia 31: rótulo "vs mês inteiro"');
+});

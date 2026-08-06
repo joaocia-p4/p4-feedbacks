@@ -34,8 +34,12 @@ function somaDaily(rows) {
   return round2(rows.reduce((s, r) => s + (Number(r.faturamento) || 0), 0));
 }
 
-async function getFaturometro() {
-  const hoje = todayISO();
+// hojeISO (opcional): mesmo padrão de backfillProgress/backfillStep em
+// lib/faturometroSync.js — usado pelos testes para fixar o dia sem depender do
+// relógio real (ex.: a borda do dia 31, em que o mês anterior não tem o dia
+// equivalente). A rota chama sem argumento e usa o dia real do negócio.
+async function getFaturometro(hojeISO) {
+  const hoje = hojeISO || todayISO();
   const ontem = addDaysISO(hoje, -1);
   const agoraHHMMSS = businessTimeOf(new Date());
   const janela = previousMonthWindow(hoje);
