@@ -78,6 +78,30 @@ async function upsertOrderRow(row) {
   return dados;
 }
 
+// Upsert do livro em LOTE. Uma ida ao banco por linha custa 5-15 ms cada no
+// Neon: um dia com algumas centenas de pedidos levava vários segundos, e é
+// nessa janela que a tela lê o dia pela metade. Em blocos, o mesmo dia sai em
+// duas ordens de grandeza menos idas — e o backfill acelera junto.
+const LOTE_UPSERT = 200;
+
+async function upsertOrderRows(q, rows) {
+  // Dedupe por order_id: o /orders/search pode repetir um pedido entre páginas
+  // (a ordenação muda enquanto se pagina) e, no Postgres, um INSERT com a mesma
+  // chave duas vezes no MESMO comando derruba o ON CONFLICT DO UPDATE
+  // ("cannot affect row a second time"). Fica a última ocorrência.
+  const porId = new Map();
+  for (const row of rows) porId.set(row.order_id, { ...row, atualizado_em: agora() });
+  const unicas = [...porId.values()];
+
+  for (let i = 0; i < unicas.length; i += LOTE_UPSERT) {
+    await q('faturometro_orders')
+      .insert(unicas.slice(i, i + LOTE_UPSERT))
+      .onConflict('order_id')
+      .merge(ORDER_UPSERT_COLS);
+  }
+  return unicas.length;
+}
+
 // Grava (ou atualiza) uma linha do livro e reconsolida o dia afetado.
 // A escrita em si é o upsert atômico acima. O SELECT prévio continua
 // necessário só para saber se o pedido migrou de dia/conta e, nesse caso,
@@ -186,26 +210,44 @@ async function reconcileAccount(accountId, dia) {
   const rows = r.pedidos.map((o) => orderRow(o, accountId)).filter((x) => x && x.dia === dia);
   const ids = rows.map((x) => x.order_id);
 
-  // Dia TRUNCADO (mais pedidos do que o /orders/search pagina): a resposta é um
-  // PEDAÇO do dia, não o dia inteiro — logo não é autoritativa. Apagar "o que não
-  // veio" aqui destruiria pedidos reais que o webhook capturou, e o número cairia
-  // em silêncio para sempre. Os upserts continuam valendo (são correções de
-  // verdade); só o del() sai de cena, e a conta é marcada com erro para aparecer
-  // em `comErro` na tela.
-  if (!r.truncado) {
-    const del = db('faturometro_orders').where({ account_id: accountId, dia });
-    if (ids.length) del.whereNotIn('order_id', ids);
-    await del.del();
-  }
+  // Apagar + regravar + reconsolidar numa TRANSAÇÃO só. Sem ela existe uma
+  // janela — de vários segundos numa conta movimentada, porque cada gravação é
+  // uma ida ao banco — em que o dia está apagado e ainda não foi reposto; e é
+  // exatamente dessa tabela que getFaturometro tira `hoje.faturamento`. Quem
+  // estivesse com a tela aberta veria o número grande cair e voltar, num painel
+  // cuja premissa inteira é um número confiável ao vivo.
+  //
+  // A transação também pode LANÇAR (banco fora do ar, conflito). Mesmo contrato
+  // do resto da função: captura, registra e devolve { ok:false } — runQueue e
+  // backfillStep contam com "esta função nunca lança".
+  try {
+    await db.transaction(async (trx) => {
+      // Dia TRUNCADO (mais pedidos do que o /orders/search pagina): a resposta
+      // é um PEDAÇO do dia, não o dia inteiro — logo não é autoritativa. Apagar
+      // "o que não veio" aqui destruiria pedidos reais que o webhook capturou, e
+      // o número cairia em silêncio para sempre. Os upserts continuam valendo
+      // (são correções de verdade); só o del() sai de cena, e a conta é marcada
+      // com erro para aparecer em `comErro` na tela.
+      if (!r.truncado) {
+        const del = trx('faturometro_orders').where({ account_id: accountId, dia });
+        if (ids.length) del.whereNotIn('order_id', ids);
+        await del.del();
+      }
 
-  // Upsert atômico por linha (mesmo helper de saveOrderRow) — não read-then-write:
-  // o webhook pode estar gravando o MESMO order_id neste exato instante (mesma
-  // conta, mesmo pedido) e um SELECT-então-INSERT colidiria na PK.
-  for (const row of rows) {
-    await upsertOrderRow(row);
-  }
+      // Upsert em lote, sempre atômico por order_id — nunca read-then-write: o
+      // webhook pode estar gravando o MESMO pedido neste instante e um
+      // SELECT-então-INSERT colidiria na PK.
+      await upsertOrderRows(trx, rows);
 
-  await recalcDay(accountId, dia);
+      // Dentro da MESMA transação: de fora, o recálculo leria o livro sem as
+      // linhas que acabaram de entrar e consolidaria o dia pela metade.
+      await recalcDay(accountId, dia, trx);
+    });
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    await marcarSync(accountId, { erro: msg.slice(0, 300) });
+    return { ok: false, erro: msg };
+  }
 
   // Truncado devolve ok:true de propósito: o dia FOI visitado e corrigido no que
   // dava, e um ok:false faria o backfillStep parar nesse dia e tentar o mesmo dia

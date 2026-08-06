@@ -509,6 +509,109 @@ test('o uuid da linha do consolidado não muda a cada recálculo', async () => {
   assert.equal(depois.id, antes.id, 'o id da linha é estável — recalcular não pode trocar o uuid');
 });
 
+// ── revisão final da branch: a janela entre apagar e reinserir ───────────────
+// A reconciliação apagava o dia e reinseria uma ida ao banco POR LINHA, sem
+// transação — e getFaturometro tira `hoje.faturamento` dessa mesma tabela. No
+// Neon, a 5-15 ms por insert, uma conta com algumas centenas de pedidos deixava
+// vários segundos com o faturamento sumido da tela. ml_user_id 7201-7202.
+//
+// Derruba a PRIMEIRA regravação do livro, simulando um banco que cai no meio da
+// reconciliação: é o que prova que apagar e repor estão na mesma transação.
+// O remendo vai no PROTÓTIPO do cliente, não na instância: dentro de uma
+// transação o knex executa por um cliente próprio (Object.create(client.
+// constructor.prototype), em knex/lib/execution/transaction.js), que não
+// enxergaria um remendo posto só em db.client.
+function derrubarProximaGravacaoDoLivro() {
+  const proto = Object.getPrototypeOf(db.client);
+  const original = proto._query;
+  const estado = { disparou: false };
+  proto._query = async function (conn, obj) {
+    if (!estado.disparou && /insert\s+into\s+.?faturometro_orders/i.test(obj.sql)) {
+      estado.disparou = true;
+      throw new Error('falha simulada no meio da regravação');
+    }
+    return original.call(this, conn, obj);
+  };
+  estado.restaurar = () => { proto._query = original; };
+  return estado;
+}
+
+test('falha no meio da reconciliação não deixa o dia parcialmente apagado (apagar + repor + consolidar na mesma transação)', async () => {
+  await semear('acc-trx', '7201');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(700, 500, 1, 'b1'), 'acc-trx'));
+  await faturometro.saveOrderRow(orderRow(cru(701, 300, 1, 'b2'), 'acc-trx'));
+
+  const originalOrders = meli.ordersOfDay;
+  // A resposta não traz o 700: sem transação, o del() apagaria e a falha
+  // seguinte deixaria o dia mutilado.
+  meli.ordersOfDay = async () => ({ pedidos: [cru(701, 300, 1, 'b2')], erro: null, truncado: false });
+  const queda = derrubarProximaGravacaoDoLivro();
+  let r;
+  try {
+    r = await faturometro.reconcileAccount('acc-trx', '2026-08-06');
+  } finally {
+    queda.restaurar();
+    meli.ordersOfDay = originalOrders;
+  }
+
+  assert.equal(queda.disparou, true, 'a falha precisa ter sido injetada, senão o teste não prova nada');
+  assert.equal(r.ok, false, 'falha de banco vira erro registrado, não exceção propagada');
+
+  assert.ok(await db('faturometro_orders').where({ order_id: '700' }).first(), 'o del() tem de ter voltado atrás junto com a falha');
+  assert.ok(await db('faturometro_orders').where({ order_id: '701' }).first());
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-trx', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 800, 'o consolidado não pode ficar no meio do caminho');
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-trx' }).first();
+  assert.ok(sync.erro, 'a falha tem de ficar registrada para a tela');
+});
+
+test('a reconciliação regrava o livro em LOTE, não uma ida ao banco por pedido', async () => {
+  await semear('acc-lote', '7202');
+  const pedidos = Array.from({ length: 250 }, (_, i) => cru(800000 + i, 10, 1, 'b' + i));
+
+  const inserts = [];
+  const ouvir = (q) => { if (/insert\s+into\s+.?faturometro_orders/i.test(q.sql)) inserts.push(q.sql); };
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos, erro: null, truncado: false });
+  db.on('query', ouvir);
+  try {
+    const r = await faturometro.reconcileAccount('acc-lote', '2026-08-06');
+    assert.equal(r.ok, true);
+  } finally {
+    db.removeListener('query', ouvir);
+    meli.ordersOfDay = original;
+  }
+
+  assert.ok(inserts.length <= 3, `250 pedidos têm de caber em poucos comandos; foram ${inserts.length}`);
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-lote', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 2500);
+  assert.equal(dia.pedidos, 250);
+});
+
+test('pedido repetido entre páginas do ML não derruba o upsert em lote', async () => {
+  await semear('acc-dup', '7203');
+  const original = meli.ordersOfDay;
+  // Mesmo order_id duas vezes na resposta: no Postgres, duas vezes a mesma
+  // chave no MESMO comando derruba o ON CONFLICT DO UPDATE.
+  meli.ordersOfDay = async () => ({
+    pedidos: [cru(810, 100, 1, 'b1'), cru(811, 50, 1, 'b2'), cru(810, 100, 1, 'b1')],
+    erro: null,
+    truncado: false,
+  });
+  try {
+    const r = await faturometro.reconcileAccount('acc-dup', '2026-08-06');
+    assert.equal(r.ok, true);
+  } finally { meli.ordersOfDay = original; }
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-dup', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 150, 'o pedido repetido conta uma vez só');
+  assert.equal(dia.pedidos, 2);
+});
+
 // ── revisão pós-Task 6: o motor de segundo plano ─────────────────────────────
 test('kick() com FATUROMETRO_BACKGROUND=off não dispara nada (a suíte de leitura não pode bater na API real)', async () => {
   await semear('acc-off', '2003');
