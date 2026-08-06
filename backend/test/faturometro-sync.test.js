@@ -771,3 +771,104 @@ test('backfillProgress calcula a fração parcial certa, com denominador conheci
     await db('accounts').whereIn('id', outrosIds).update({ ativo: true });
   }
 });
+
+// ── leitura (payload da tela) ────────────────────────────────────────────────
+const faturometroService = require('../src/services/faturometroService');
+const { todayISO } = require('../src/lib/p4');
+const { addDaysISO } = require('../src/lib/faturometro');
+
+// Grava direto no livro, sem passar pelo ML, para montar cenários de leitura.
+async function lancar(accountId, orderId, dia, hora, valor, unidades, comprador) {
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow({
+    id: orderId, date_created: `${dia}T${hora}-03:00`,
+    total_amount: valor, order_items: [{ quantity: unidades }], buyer: { id: comprador },
+  }, accountId));
+}
+
+// ml_user_id 6001-6007: faixa nova, sem colisão com 111-999/1010-1414/
+// 1515-1717/2001-2006/3001-3004/4001-4005/5001-5006/70001-70002.
+test('payload soma hoje de todas as contas no escopo', async () => {
+  const hoje = todayISO();
+  await semear('acc-le1', '6001');
+  await semear('acc-le2', '6002');
+  await lancar('acc-le1', 900, hoje, '09:00:00', 100, 1, 'b1');
+  await lancar('acc-le2', 901, hoje, '09:30:00', 250, 2, 'b2');
+
+  const p = await faturometroService.getFaturometro();
+
+  assert.ok(p.hoje.faturamento >= 350, `esperava ao menos 350, veio ${p.hoje.faturamento}`);
+  assert.ok(p.contas.conectadas >= 2);
+  assert.equal(p.porHora.length, 24);
+});
+
+test('conta encerrada fica fora da soma e fora da lista', async () => {
+  const hoje = todayISO();
+  await semear('acc-enc', '6003');
+  await lancar('acc-enc', 910, hoje, '09:00:00', 5000, 1, 'b1');
+  const antes = await faturometroService.getFaturometro();
+
+  await db('accounts').where({ id: 'acc-enc' }).update({ ativo: false });
+  const depois = await faturometroService.getFaturometro();
+
+  assert.equal(antes.hoje.faturamento - depois.hoje.faturamento, 5000);
+  assert.equal(depois.clientes.some((c) => c.clienteId === 'c-acc-enc'), false);
+});
+
+test('conta com erro segue somando e aparece em comErro', async () => {
+  const hoje = todayISO();
+  await semear('acc-quebrou', '6004');
+  await lancar('acc-quebrou', 920, hoje, '09:00:00', 700, 1, 'b1');
+  await faturometro.marcarSync('acc-quebrou', { erro: 'token expirado' });
+
+  const p = await faturometroService.getFaturometro();
+
+  assert.ok(p.contas.comErro >= 1);
+  const linha = p.clientes.find((c) => c.clienteId === 'c-acc-quebrou');
+  assert.equal(linha.hoje, 700, 'receita anterior à quebra tem de continuar contando');
+  assert.ok(linha.erro);
+});
+
+test('comparação com ontem corta pelo horário atual', async () => {
+  const hoje = todayISO();
+  const ontem = addDaysISO(hoje, -1);
+  await semear('acc-ontem', '6005');
+  await lancar('acc-ontem', 930, ontem, '00:00:01', 40, 1, 'b1'); // antes de agora
+  await lancar('acc-ontem', 931, ontem, '23:59:59', 999, 1, 'b2'); // depois de agora
+
+  const p = await faturometroService.getFaturometro();
+
+  assert.ok(p.hoje.ontemAteAgora < 999, 'o pedido do fim do dia de ontem não pode entrar');
+});
+
+test('duas contas do mesmo cliente viram uma linha só', async () => {
+  const hoje = todayISO();
+  await db('users').insert({ id: 'u-fat', nome: 'Ana', email: 'ana@fat.test', senha_hash: 'x', papel: 'analista' })
+    .onConflict('id').ignore();
+  await db('clients').insert({
+    id: 'c-duplo', loja: 'Loja Dupla', tipo: 'Loja',
+    analista_id: 'u-fat', agenda_freq: 'Semanal', agenda_dia_semana: 'Segunda',
+  }).onConflict('id').ignore();
+  for (const [id, ml] of [['acc-d1', '6006'], ['acc-d2', '6007']]) {
+    await db('accounts').insert({ id, client_id: 'c-duplo', marketplace: 'Mercado Livre', apelido: id, ativo: true })
+      .onConflict('id').ignore();
+    await db('meli_connections').insert({
+      id: 'conn-' + id, account_id: id, ml_user_id: ml, access_token: 'x',
+      expires_at: new Date(Date.now() + 3600e3).toISOString(),
+    }).onConflict('id').ignore();
+  }
+  await lancar('acc-d1', 940, hoje, '09:00:00', 100, 1, 'b1');
+  await lancar('acc-d2', 941, hoje, '09:00:00', 200, 1, 'b2');
+
+  const p = await faturometroService.getFaturometro();
+  const linha = p.clientes.find((c) => c.clienteId === 'c-duplo');
+
+  assert.equal(linha.contas, 2);
+  assert.equal(linha.hoje, 300);
+});
+
+test('lista sai ordenada pelo faturamento de hoje', async () => {
+  const p = await faturometroService.getFaturometro();
+  const valores = p.clientes.map((c) => c.hoje);
+  assert.deepEqual(valores, [...valores].sort((a, b) => b - a));
+});
