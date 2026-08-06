@@ -6,7 +6,8 @@
 const { v4: uuid } = require('uuid');
 const db = require('../db/knex');
 const meli = require('../services/meliService');
-const { orderRow, round2 } = require('./faturometro');
+const { orderRow, round2, addDaysISO } = require('./faturometro');
+const { todayISO } = require('./p4');
 
 function agora() {
   return new Date().toISOString();
@@ -104,4 +105,128 @@ async function handleNotification(body) {
   return ingestOrder(conn.account_id, orderId);
 }
 
-module.exports = { marcarSync, recalcDay, saveOrderRow, ingestOrder, handleNotification };
+const JANELA_LIVRO_DIAS = 70; // cobre com folga o dia equivalente do mês anterior
+const JANELA_RECONCILIA_MS = 10 * 60 * 1000;
+const CONTAS_POR_CICLO = 5; // rodízio: com 40+ contas, tudo de uma vez derruba o ciclo
+const BACKFILL_DIAS_POR_CICLO = 3;
+
+// Id do vendedor no ML. Vem da conexão; só chama /users/me se ela não tiver.
+async function sellerIdOf(accountId) {
+  const conn = await meli.getConnection(accountId);
+  if (!conn) return null;
+  if (conn.ml_user_id) return conn.ml_user_id;
+  const me = await meli.apiGet(accountId, '/users/me');
+  return me.ok ? String(me.data.id) : null;
+}
+
+// Rebusca um dia inteiro na API de Pedidos e faz o livro bater com a resposta:
+// grava o que veio, apaga o que sumiu. É o que conserta o que o webhook perdeu
+// enquanto o Render dormia.
+//
+// Erro do ML NÃO zera nada: mantemos o que já estava contado (é receita que
+// aconteceu) e registramos o erro para a tela sinalizar "precisa reconectar".
+async function reconcileAccount(accountId, dia) {
+  const sellerId = await sellerIdOf(accountId);
+  if (!sellerId) {
+    await marcarSync(accountId, { erro: 'conta sem conexão com o Mercado Livre' });
+    return { ok: false, erro: 'sem conexão' };
+  }
+
+  const r = await meli.ordersOfDay(accountId, sellerId, dia);
+  if (r.erro) {
+    await marcarSync(accountId, { erro: JSON.stringify(r.erro).slice(0, 300) });
+    return { ok: false, erro: r.erro };
+  }
+
+  const rows = r.pedidos.map((o) => orderRow(o, accountId)).filter((x) => x && x.dia === dia);
+  const ids = rows.map((x) => x.order_id);
+
+  const del = db('faturometro_orders').where({ account_id: accountId, dia });
+  if (ids.length) del.whereNotIn('order_id', ids);
+  await del.del();
+
+  for (const row of rows) {
+    const existing = await db('faturometro_orders').where({ order_id: row.order_id }).first();
+    const dados = { ...row, atualizado_em: agora() };
+    if (existing) await db('faturometro_orders').where({ order_id: row.order_id }).update(dados);
+    else await db('faturometro_orders').insert(dados);
+  }
+
+  await recalcDay(accountId, dia);
+  await marcarSync(accountId, { erro: null, reconciliado_em: agora() });
+  return { ok: true, pedidos: rows.length };
+}
+
+// O livro guarda 70 dias; o consolidado guarda tudo. Só a granularidade por hora
+// dos dias antigos se perde, e ninguém a consulta.
+async function purgeOldOrders(hojeISO) {
+  const corte = addDaysISO(hojeISO || todayISO(), -JANELA_LIVRO_DIAS);
+  return db('faturometro_orders').where('dia', '<', corte).del();
+}
+
+// Contas no escopo do Faturômetro: conectadas ao ML e não encerradas.
+function scopedAccounts() {
+  return db('meli_connections')
+    .join('accounts', 'accounts.id', 'meli_connections.account_id')
+    .whereNot('accounts.ativo', false)
+    .select('accounts.id as accountId');
+}
+
+// Um ciclo de trabalho: expurgo (uma vez por dia), rodízio de reconciliação e um
+// lote de backfill. Roda em segundo plano — nada aqui pode lançar para fora.
+let rodando = false;
+let ultimoExpurgo = null;
+
+async function runQueue() {
+  const hoje = todayISO();
+
+  if (ultimoExpurgo !== hoje) {
+    ultimoExpurgo = hoje;
+    await purgeOldOrders(hoje).catch(() => {});
+  }
+
+  const contas = await scopedAccounts();
+  const syncs = await db('faturometro_sync').whereIn('account_id', contas.map((c) => c.accountId));
+  const porConta = new Map(syncs.map((s) => [s.account_id, s]));
+
+  const vencidas = contas
+    .map((c) => ({ id: c.accountId, sync: porConta.get(c.accountId) }))
+    .filter((x) => {
+      const t = x.sync && x.sync.reconciliado_em ? Date.parse(x.sync.reconciliado_em) : 0;
+      return Date.now() - t > JANELA_RECONCILIA_MS;
+    })
+    .sort((a, b) => {
+      const ta = a.sync && a.sync.reconciliado_em ? Date.parse(a.sync.reconciliado_em) : 0;
+      const tb = b.sync && b.sync.reconciliado_em ? Date.parse(b.sync.reconciliado_em) : 0;
+      return ta - tb; // a mais antiga primeiro
+    })
+    .slice(0, CONTAS_POR_CICLO);
+
+  for (const c of vencidas) {
+    await reconcileAccount(c.id, hoje).catch(() => {});
+  }
+}
+
+// Dispara o motor sem bloquear quem chamou. A trava garante um ciclo por vez —
+// com polling de 30s, sem ela os ciclos se empilhariam.
+//
+// FATUROMETRO_BACKGROUND=off desliga o motor: os testes de leitura chamam
+// getFaturometro(), que dispara o kick, e sem essa trava o ciclo sairia batendo
+// na API real do Mercado Livre no meio da suíte.
+function kick() {
+  if (process.env.FATUROMETRO_BACKGROUND === 'off') return;
+  if (rodando) return;
+  rodando = true;
+  Promise.resolve()
+    .then(runQueue)
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error('[faturometro] ciclo falhou:', e.message);
+    })
+    .finally(() => { rodando = false; });
+}
+
+module.exports = {
+  marcarSync, recalcDay, saveOrderRow, ingestOrder, handleNotification,
+  reconcileAccount, purgeOldOrders, scopedAccounts, runQueue, kick,
+};

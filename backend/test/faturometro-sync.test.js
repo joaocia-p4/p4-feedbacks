@@ -252,3 +252,84 @@ test('notificação sem resource é ignorada', async () => {
   const r = await faturometro.handleNotification({ topic: 'orders_v2', user_id: 777 });
   assert.equal(r, null);
 });
+
+// ── reconciliação ────────────────────────────────────────────────────────────
+test('reconciliação repõe um pedido que o webhook perdeu', async () => {
+  await semear('acc-rec', '1010');
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [cru(80, 100, 1, 'b1'), cru(81, 200, 2, 'b2')], erro: null });
+  try {
+    const r = await faturometro.reconcileAccount('acc-rec', '2026-08-06');
+    assert.equal(r.ok, true);
+  } finally { meli.ordersOfDay = original; }
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-rec', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 300);
+  assert.equal(dia.pedidos, 2);
+});
+
+test('reconciliação apaga do livro pedido que não existe mais no ML', async () => {
+  await semear('acc-rec2', '1111');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(90, 999, 1, 'b1'), 'acc-rec2')); // fantasma
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [cru(91, 100, 1, 'b2')], erro: null });
+  try {
+    await faturometro.reconcileAccount('acc-rec2', '2026-08-06');
+  } finally { meli.ordersOfDay = original; }
+
+  const fantasma = await db('faturometro_orders').where({ order_id: '90' }).first();
+  assert.equal(fantasma, undefined);
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-rec2', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 100);
+});
+
+test('reconciliação com erro do ML preserva o que já havia e registra o erro', async () => {
+  await semear('acc-rec3', '1212');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(95, 500, 1, 'b1'), 'acc-rec3'));
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: { message: 'invalid token' } });
+  try {
+    const r = await faturometro.reconcileAccount('acc-rec3', '2026-08-06');
+    assert.equal(r.ok, false);
+  } finally { meli.ordersOfDay = original; }
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-rec3', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 500, 'não pode zerar o que já estava contado');
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-rec3' }).first();
+  assert.ok(sync.erro);
+});
+
+test('reconciliação bem-sucedida limpa o erro anterior e marca o horário', async () => {
+  await semear('acc-rec4', '1313');
+  await faturometro.marcarSync('acc-rec4', { erro: 'token expirado' });
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null });
+  try {
+    await faturometro.reconcileAccount('acc-rec4', '2026-08-06');
+  } finally { meli.ordersOfDay = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-rec4' }).first();
+  assert.equal(sync.erro, null);
+  assert.ok(sync.reconciliado_em);
+});
+
+// ── expurgo ──────────────────────────────────────────────────────────────────
+test('expurgo apaga pedidos com mais de 70 dias sem tocar no consolidado', async () => {
+  await semear('acc-purga', '1414');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(200, 100, 1, 'b1', '2026-01-10T13:00:00.000-03:00'), 'acc-purga'));
+  await faturometro.saveOrderRow(orderRow(cru(201, 100, 1, 'b1', '2026-08-06T13:00:00.000-03:00'), 'acc-purga'));
+
+  const apagados = await faturometro.purgeOldOrders('2026-08-06');
+
+  assert.equal(apagados, 1);
+  assert.equal(await db('faturometro_orders').where({ order_id: '200' }).first(), undefined);
+  assert.ok(await db('faturometro_orders').where({ order_id: '201' }).first());
+  const antigo = await db('faturometro_daily').where({ account_id: 'acc-purga', dia: '2026-01-10' }).first();
+  assert.equal(Number(antigo.faturamento), 100, 'o consolidado tem de sobreviver ao expurgo');
+});
