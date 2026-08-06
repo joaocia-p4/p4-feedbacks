@@ -183,9 +183,36 @@ function dateList(from, to) {
   return out;
 }
 
-// Faturamento + vendas BRUTAS do período via API de Pedidos. Vai dia a dia (o
-// offset do /orders/search trava em 1000) e soma TODOS os pedidos criados no dia,
-// sem filtrar status (bruto, sem descontar cancelamentos/devoluções). Fuso -03:00.
+// Pedidos CRUS de um dia (fuso -03:00), paginando o /orders/search. O offset do
+// endpoint trava em 1000, por isso a varredura é dia a dia. Não filtra status:
+// faturamento é BRUTO, igual ao relatório.
+async function ordersOfDay(accountId, sellerId, dia) {
+  const pedidos = [];
+  let erro = null;
+  let offset = 0;
+  for (let i = 0; i < 25 && offset < 1000; i++) {
+    const q =
+      `/orders/search?seller=${encodeURIComponent(sellerId)}` +
+      `&order.date_created.from=${encodeURIComponent(dia + 'T00:00:00.000-03:00')}` +
+      `&order.date_created.to=${encodeURIComponent(dia + 'T23:59:59.999-03:00')}` +
+      `&sort=date_desc&limit=50&offset=${offset}`;
+    const r = await apiGet(accountId, q);
+    if (!r.ok) { erro = r.data; break; }
+    const results = r.data.results || [];
+    pedidos.push(...results);
+    const total = r.data.paging ? r.data.paging.total : results.length;
+    offset += 50;
+    if (offset >= total || results.length === 0) break;
+  }
+  return { pedidos, erro };
+}
+
+// Um pedido específico — é o que o webhook chama ao receber uma notificação.
+function fetchOrder(accountId, orderId) {
+  return apiGet(accountId, `/orders/${encodeURIComponent(orderId)}`);
+}
+
+// Faturamento + vendas BRUTAS do período, somando em cima de ordersOfDay.
 // faturamento = Σ total_amount · vendas = Σ unidades dos itens.
 async function ordersTotals(accountId, sellerId, from, to) {
   let faturamento = 0;
@@ -193,26 +220,13 @@ async function ordersTotals(accountId, sellerId, from, to) {
   let pedidos = 0;
   let erro = null;
   for (const day of dateList(from, to)) {
-    let offset = 0;
-    for (let i = 0; i < 25 && offset < 1000; i++) {
-      const q =
-        `/orders/search?seller=${encodeURIComponent(sellerId)}` +
-        `&order.date_created.from=${encodeURIComponent(day + 'T00:00:00.000-03:00')}` +
-        `&order.date_created.to=${encodeURIComponent(day + 'T23:59:59.999-03:00')}` +
-        `&sort=date_desc&limit=50&offset=${offset}`;
-      const r = await apiGet(accountId, q);
-      if (!r.ok) { erro = r.data; break; }
-      const results = r.data.results || [];
-      for (const o of results) {
-        faturamento += o.total_amount || 0;
-        vendas += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
-      }
-      pedidos += results.length;
-      const total = r.data.paging ? r.data.paging.total : results.length;
-      offset += 50;
-      if (offset >= total || results.length === 0) break;
+    const r = await ordersOfDay(accountId, sellerId, day);
+    for (const o of r.pedidos) {
+      faturamento += o.total_amount || 0;
+      vendas += (o.order_items || []).reduce((s, it) => s + (it.quantity || 0), 0);
     }
-    if (erro) break;
+    pedidos += r.pedidos.length;
+    if (r.erro) { erro = r.erro; break; }
   }
   return { faturamento, vendas, pedidos, erro };
 }
@@ -478,4 +492,7 @@ module.exports = {
   disconnect,
   getValidAccessToken,
   apiGet,
+  ordersOfDay,
+  fetchOrder,
+  ordersTotals,
 };
