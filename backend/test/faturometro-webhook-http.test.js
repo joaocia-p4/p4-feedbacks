@@ -43,7 +43,16 @@ test.after(async () => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// POST cru via node:http — sem dependência nova (nada de supertest).
+// Prazo da requisição de teste — bem folgado em relação ao tempo real medido
+// no código correto (~25-30ms), mas curto o bastante para o teste falhar
+// rápido, com mensagem, em vez de travar o processo indefinidamente caso a
+// rota volte a esperar o processamento antes de responder.
+const PRAZO_MS = 2000;
+
+// POST cru via node:http — sem dependência nova (nada de supertest). Se a rota
+// não responder dentro de PRAZO_MS, a promise REJEITA com mensagem legível em
+// vez de ficar pendurada — sem isso, uma regressão (await antes do sendStatus)
+// trava o teste e todo o resto do arquivo, sem dizer o que houve.
 function post(pathname, body) {
   return new Promise((resolve, reject) => {
     const data = Buffer.from(JSON.stringify(body));
@@ -54,6 +63,7 @@ function post(pathname, body) {
         path: pathname,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': data.length },
+        timeout: PRAZO_MS,
       },
       (res) => {
         const chunks = [];
@@ -61,6 +71,9 @@ function post(pathname, body) {
         res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
       }
     );
+    req.on('timeout', () => {
+      req.destroy(new Error(`a rota não respondeu em ${PRAZO_MS}ms — provavelmente está processando antes de responder`));
+    });
     req.on('error', reject);
     req.write(data);
     req.end();
