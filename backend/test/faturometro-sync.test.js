@@ -441,6 +441,74 @@ test('dia truncado não zera um erro anterior nem deixa a conta parecer conferid
   assert.ok(sync.reconciliado_em, 'o dia FOI visitado: o rodízio precisa andar');
 });
 
+// ── revisão final da branch: recalcDay não pode ser um lost-update ───────────
+// O recálculo lia o dia inteiro, somava em JS e escrevia depois. Duas
+// notificações orders_v2 de pedidos DIFERENTES do mesmo vendedor chegam
+// concorrentes (a rota é fire-and-forget por desenho) e a que leu o conjunto
+// menor pode escrever por último: livro certo, consolidado errado — e é do
+// consolidado que sai mes.faturamento.
+test('recalcDay consolida numa ÚNICA instrução, com a soma feita pelo banco', async () => {
+  await semear('acc-1inst', '7101');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(610, 120, 2, 'b1'), 'acc-1inst'));
+
+  const sqls = [];
+  const ouvir = (q) => sqls.push(q.sql);
+  db.on('query', ouvir);
+  try {
+    await faturometro.recalcDay('acc-1inst', '2026-08-06');
+  } finally { db.removeListener('query', ouvir); }
+
+  assert.equal(sqls.length, 1, `o recálculo tem de ser UMA instrução só (ler e escrever juntos); vieram ${sqls.length}: ${sqls.join(' | ')}`);
+  assert.match(sqls[0], /insert\s+into\s+.?faturometro_daily/i);
+  assert.match(sqls[0], /select[\s\S]*from\s+.?faturometro_orders/i, 'o agregado tem de sair do banco, não de uma soma em JS');
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-1inst', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 120);
+  assert.equal(dia.unidades, 2);
+  assert.equal(dia.pedidos, 1);
+});
+
+// Por que o teste ACIMA é estrutural (uma instrução só) e não uma corrida de
+// verdade: o knex força pool {min:1,max:1} no dialeto sqlite (poolDefaults() em
+// knex/lib/dialects/sqlite3), então TODA consulta da suíte passa por uma única
+// conexão, em fila FIFO. Numa fila assim quem escreve por último é sempre quem
+// leu por último, e o lost-update simplesmente não é alcançável pela API
+// pública — medido: com o código antigo, `Promise.all` de 2 e de 10
+// saveOrderRow fecha certo em 100% das execuções, e até atrasar a resposta da
+// leitura não abre a janela (o atraso segura a única conexão e serializa o
+// resto). A corrida é real no Postgres/Neon, onde cada ida ao banco é uma
+// conexão própria com 5-15 ms de rede. Por isso o que se testa aqui é a
+// PROPRIEDADE que a elimina (ler e escrever na mesma instrução), e o teste
+// abaixo fica como guarda do resultado.
+test('dois saveOrderRow concorrentes de pedidos DIFERENTES fecham o consolidado com a soma dos dois', async () => {
+  await semear('acc-conc2', '7103');
+  const { orderRow } = require('../src/lib/faturometro');
+
+  await Promise.all([
+    faturometro.saveOrderRow(orderRow(cru(630, 100, 1, 'b1'), 'acc-conc2')),
+    faturometro.saveOrderRow(orderRow(cru(631, 200, 2, 'b2'), 'acc-conc2')),
+  ]);
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-conc2', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 300);
+  assert.equal(dia.unidades, 3);
+  assert.equal(dia.pedidos, 2);
+});
+
+test('o uuid da linha do consolidado não muda a cada recálculo', async () => {
+  await semear('acc-uuid', '7104');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(640, 100, 1, 'b1'), 'acc-uuid'));
+  const antes = await db('faturometro_daily').where({ account_id: 'acc-uuid', dia: '2026-08-06' }).first();
+
+  await faturometro.recalcDay('acc-uuid', '2026-08-06');
+  await faturometro.recalcDay('acc-uuid', '2026-08-06');
+
+  const depois = await db('faturometro_daily').where({ account_id: 'acc-uuid', dia: '2026-08-06' }).first();
+  assert.equal(depois.id, antes.id, 'o id da linha é estável — recalcular não pode trocar o uuid');
+});
+
 // ── revisão pós-Task 6: o motor de segundo plano ─────────────────────────────
 test('kick() com FATUROMETRO_BACKGROUND=off não dispara nada (a suíte de leitura não pode bater na API real)', async () => {
   await semear('acc-off', '2003');

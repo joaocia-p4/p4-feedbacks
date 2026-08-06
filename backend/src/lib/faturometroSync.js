@@ -6,7 +6,7 @@
 const { v4: uuid } = require('uuid');
 const db = require('../db/knex');
 const meli = require('../services/meliService');
-const { orderRow, round2, addDaysISO, previousMonthWindow } = require('./faturometro');
+const { orderRow, addDaysISO, previousMonthWindow } = require('./faturometro');
 const { todayISO } = require('./p4');
 
 function agora() {
@@ -29,20 +29,39 @@ async function marcarSync(accountId, patch) {
 
 // Recalcula o consolidado de um dia a partir do livro. É sempre uma soma do
 // zero — nunca um incremento — então erra menos e é seguro chamar de novo.
-// Upsert atômico no conflito real (['account_id','dia'], não a PK `id`) — o
-// merge NÃO inclui `id`, senão o uuid da linha mudaria a cada recálculo.
-async function recalcDay(accountId, dia) {
-  const rows = await db('faturometro_orders').where({ account_id: accountId, dia });
-  const patch = {
-    faturamento: round2(rows.reduce((s, o) => s + (Number(o.total_amount) || 0), 0)),
-    unidades: rows.reduce((s, o) => s + (Number(o.unidades) || 0), 0),
-    pedidos: rows.length,
-    atualizado_em: agora(),
-  };
-  await db('faturometro_daily')
-    .insert({ id: uuid(), account_id: accountId, dia, ...patch })
-    .onConflict(['account_id', 'dia'])
-    .merge(['faturamento', 'unidades', 'pedidos', 'atualizado_em']);
+//
+// A soma é feita PELO BANCO, na MESMA instrução que escreve. Ler o dia inteiro,
+// somar em JS e escrever depois (como era) é um lost-update: duas notificações
+// orders_v2 de pedidos DIFERENTES do mesmo vendedor chegam concorrentes (a rota
+// é fire-and-forget por desenho), as duas recalculam, e a que leu o conjunto
+// menor pode escrever por último — livro certo, consolidado errado. E é do
+// consolidado que sai `mes.faturamento`.
+//
+// O agregado sem GROUP BY devolve SEMPRE uma linha (zeros quando o dia não tem
+// pedido nenhum), que é o que faz um dia esvaziado zerar em vez de ficar com o
+// número velho. O conflito é o par real (['account_id','dia'], não a PK `id`) e
+// o DO UPDATE não toca em `id` — senão o uuid da linha mudaria a cada recálculo.
+//
+// `trx` (opcional): a reconciliação chama de dentro da própria transação. Sem
+// isso o recálculo leria de FORA dela e consolidaria o dia pela metade.
+async function recalcDay(accountId, dia, trx) {
+  const q = trx || db;
+  await q.raw(
+    `insert into faturometro_daily (id, account_id, dia, faturamento, unidades, pedidos, atualizado_em)
+     select cast(? as varchar), cast(? as varchar), cast(? as varchar),
+            coalesce(round(sum(total_amount), 2), 0),
+            coalesce(sum(unidades), 0),
+            count(*),
+            cast(? as varchar)
+       from faturometro_orders
+      where account_id = ? and dia = ?
+     on conflict (account_id, dia) do update set
+            faturamento = excluded.faturamento,
+            unidades = excluded.unidades,
+            pedidos = excluded.pedidos,
+            atualizado_em = excluded.atualizado_em`,
+    [uuid(), accountId, dia, agora(), accountId, dia],
+  );
 }
 
 // Colunas que o upsert do livro atualiza quando o order_id já existe.
