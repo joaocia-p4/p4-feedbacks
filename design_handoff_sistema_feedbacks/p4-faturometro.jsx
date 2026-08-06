@@ -74,6 +74,9 @@ function FatChart({ serie, horaAtual }) {
     .join(' ');
 
   const hojeAte = Math.min(23, Math.max(0, horaAtual == null ? 23 : horaAtual));
+  // Busca por `h` (não por índice): mesmo critério já usado por `linha()` e
+  // pelas faixas de tooltip — não assume que `dados[i].h === i`.
+  const pontoHoje = dados.find((d) => d.h === hojeAte) || { hoje: 0 };
   const areaHoje = `${linha('hoje', hojeAte)} L${x(hojeAte).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
   const marcas = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
   const compacto = (v) => v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : String(Math.round(v));
@@ -84,7 +87,7 @@ function FatChart({ serie, horaAtual }) {
         <b style={{ fontSize: 14 }}>Tendências em vendas brutas</b>
         <span style={{ fontSize: 11.5, color: 'var(--muted)', display: 'flex', gap: 12 }}>
           <span><svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="var(--brand)" strokeWidth="2.5" /></svg> Hoje</span>
-          <span><svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="#8A978C" strokeWidth="2.5" strokeDasharray="5 4" /></svg> Ontem</span>
+          <span><svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="var(--muted)" strokeWidth="2.5" strokeDasharray="5 4" /></svg> Ontem</span>
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', marginTop: 10 }} role="img"
@@ -96,9 +99,9 @@ function FatChart({ serie, horaAtual }) {
           </g>
         ))}
         <path d={areaHoje} fill="var(--brand)" opacity=".2" />
-        <path d={linha('ontem')} fill="none" stroke="#8A978C" strokeWidth="2.5" strokeDasharray="5 4" strokeLinejoin="round" />
+        <path d={linha('ontem')} fill="none" stroke="var(--muted)" strokeWidth="2.5" strokeDasharray="5 4" strokeLinejoin="round" />
         <path d={linha('hoje', hojeAte)} fill="none" stroke="var(--brand)" strokeWidth="2.8" strokeLinejoin="round" />
-        <circle cx={x(hojeAte)} cy={y(dados[hojeAte].hoje)} r="5" fill="var(--brand)" stroke="#fff" strokeWidth="2.5" />
+        <circle cx={x(hojeAte)} cy={y(pontoHoje.hoje)} r="5" fill="var(--brand)" stroke="#fff" strokeWidth="2.5" />
         {dados.filter((d) => d.h % 2 === 0).map((d) => (
           <text key={d.h} x={x(d.h)} y={H - 6} textAnchor="middle" fontSize="10.5" fill="var(--muted)">
             {String(d.h).padStart(2, '0')}
