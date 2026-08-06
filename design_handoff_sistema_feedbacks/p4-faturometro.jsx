@@ -4,6 +4,30 @@
 
 const FAT_POLL_MS = 30000;
 
+// Fuso do NEGÓCIO (o mesmo BUSINESS_TZ do backend). "Hoje", "ontem até agora" e
+// a curva por hora são todos cortados em São Paulo lá; a tela precisa mostrar a
+// MESMA hora, senão um navegador em outro fuso exibe um rótulo que não bate com
+// o número ao lado.
+const FAT_TZ = 'America/Sao_Paulo';
+
+function horaDoNegocio(d, comSegundos) {
+  if (!d) return '—';
+  const opts = { timeZone: FAT_TZ, hour: '2-digit', minute: '2-digit' };
+  if (comSegundos) opts.second = '2-digit';
+  return d.toLocaleTimeString('pt-BR', opts);
+}
+function dataDoNegocio(d) {
+  return d.toLocaleDateString('pt-BR', { timeZone: FAT_TZ, day: 'numeric', month: 'long' });
+}
+// Hora cheia (0-23) no fuso do negócio — é o índice da curva por hora, que o
+// backend monta com o mesmo critério.
+function horaCheiaDoNegocio(d) {
+  const h = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: FAT_TZ, hour: '2-digit', hourCycle: 'h23',
+  }).format(d));
+  return isNaN(h) ? 0 : h;
+}
+
 window.MESES_LONGOS = window.MESES_LONGOS || [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
@@ -247,6 +271,10 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
   const clientes = (data && data.clientes) || [];
   const fresco = !err && atualizadoEm && Date.now() - atualizadoEm.getTime() < FAT_POLL_MS * 2;
   const mesLbl = m.ym ? window.MESES_LONGOS[+m.ym.slice(5, 7) - 1] : '';
+  // O instante do CORTE é o do servidor (vem no payload), não o do navegador: é
+  // ele que define até onde "ontem até agora" foi somado e até onde a curva de
+  // hoje vai. Sem payload ainda, cai no relógio local só para não ficar vazio.
+  const agoraServidor = data && data.agora ? new Date(data.agora) : relogio;
 
   return (
     <div className="shell">
@@ -259,13 +287,18 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
             <div className="fat-pill">
               <span className={'fat-dot' + (fresco ? '' : ' fat-dot-off')}></span>
               {fresco
-                ? relogio.toLocaleString('pt-BR', { day: 'numeric', month: 'long' }) + ', ' + relogio.toLocaleTimeString('pt-BR')
-                : 'atualizado às ' + (atualizadoEm ? atualizadoEm.toLocaleTimeString('pt-BR') : '—')}
+                ? dataDoNegocio(relogio) + ', ' + horaDoNegocio(relogio, true)
+                : 'atualizado às ' + horaDoNegocio(atualizadoEm, true)}
             </div>
             <div className="fat-hero-card">
-              {data ? <BigNumber valor={h.faturamento} /> : <div className="fat-big fat-big-load">carregando…</div>}
+              {data
+                ? <BigNumber valor={h.faturamento} />
+                : <div className="fat-big fat-big-load">{err ? '—' : 'carregando…'}</div>}
+              {/* O erro precisa VIRAR TEXTO: sem isso, uma primeira carga que
+                  falha deixa a tela em "carregando…" para sempre, sem explicação. */}
+              {err ? <div className="fat-erro" role="status">{err}</div> : null}
               <div className="fat-hero-sub">
-                vs ontem até {relogio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · <VarChip v={h.variacao} />
+                vs ontem até {horaDoNegocio(agoraServidor)} · <VarChip v={h.variacao} />
               </div>
             </div>
           </div>
@@ -294,7 +327,7 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
               </div>
             </div>
 
-            <window.FatChart serie={(data && data.porHora) || []} horaAtual={relogio.getHours()} />
+            <window.FatChart serie={(data && data.porHora) || []} horaAtual={horaCheiaDoNegocio(agoraServidor)} />
           </div>
 
           <div className="card" id="fat-clientes" style={{ marginTop: 18 }}>
