@@ -43,7 +43,7 @@ test('o consolidado tem as colunas dos totais do mês', async () => {
 });
 
 test('o estado de sincronismo guarda backfill, reconciliação e erro', async () => {
-  for (const col of ['account_id', 'backfill_dia', 'backfill_status', 'reconciliado_em', 'erro']) {
+  for (const col of ['account_id', 'backfill_dia', 'backfill_status', 'reconciliado_em', 'reconciliado_dia', 'erro']) {
     assert.equal(await db.schema.hasColumn('faturometro_sync', col), true, `faltou ${col}`);
   }
 });
@@ -693,6 +693,87 @@ test('rodízio: conta nunca reconciliada entra antes de conta reconciliada há m
   assert.notEqual(idxNova, -1, 'esperava a conta nunca reconciliada no rodízio');
   assert.notEqual(idxVelha, -1, 'esperava a conta reconciliada há muito tempo no rodízio');
   assert.ok(idxNova < idxVelha, 'conta nunca reconciliada (t=0) tem de vir antes da reconciliada há muito tempo');
+});
+
+// ── revisão final da branch: ontem também precisa ser reconciliado ───────────
+// O rodízio só mirava `hoje` e o backfill carimbava o dia corrente como
+// preenchido no meio da tarde — depois disso ninguém voltava a um dia fechado.
+// No Render free, todo pedido criado depois da última conferência do dia só
+// entrava se o webhook pegasse a instância acordada; o resto se perdia, e o
+// total do mês escorria para baixo um pouco a cada dia.
+async function isolarVarreduraDeOntem(...exceto) {
+  const hoje = todayISO();
+  const contas = await faturometro.scopedAccounts();
+  for (const c of contas) {
+    if (exceto.includes(c.accountId)) continue;
+    await faturometro.marcarSync(c.accountId, { reconciliado_dia: hoje });
+  }
+}
+
+test('runQueue reconcilia ONTEM uma vez por conta por dia — depois de hoje, e nunca duas vezes', async () => {
+  const hoje = todayISO();
+  const ontem = addDaysISO(hoje, -1);
+  await semear('acc-ontem1', '7301');
+  await semear('acc-ontem2', '7302');
+  await isolarReconciliacao('acc-ontem1', 'acc-ontem2');
+  await isolarVarreduraDeOntem('acc-ontem1', 'acc-ontem2');
+  await isolarBackfill(); // backfillStep fora do caminho: todas as contas prontas
+
+  const vistos = [];
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (accountId, _seller, dia) => {
+    vistos.push(`${accountId}@${dia}`);
+    return { pedidos: [], erro: null, truncado: false };
+  };
+  try {
+    await faturometro.runQueue();
+    await faturometro.runQueue(); // segundo ciclo no MESMO dia: ontem não pode repetir
+  } finally { meli.ordersOfDay = original; }
+
+  for (const conta of ['acc-ontem1', 'acc-ontem2']) {
+    const deOntem = vistos.filter((v) => v === `${conta}@${ontem}`);
+    assert.equal(deOntem.length, 1, `${conta}: ontem tem de ser conferido uma vez por dia, veio ${deOntem.length}x`);
+
+    const iHoje = vistos.indexOf(`${conta}@${hoje}`);
+    const iOntem = vistos.indexOf(`${conta}@${ontem}`);
+    assert.notEqual(iHoje, -1, `${conta}: hoje continua sendo reconciliado`);
+    assert.ok(iHoje < iOntem, `${conta}: a varredura de ontem não pode passar na frente do número ao vivo`);
+
+    const sync = await db('faturometro_sync').where({ account_id: conta }).first();
+    assert.equal(sync.reconciliado_dia, hoje, `${conta}: o carimbo do dia da varredura`);
+  }
+});
+
+test('a varredura de ontem preserva backfill_dia/backfill_status (marcarSync mescla só as chaves do patch)', async () => {
+  await semear('acc-ontem3', '7303');
+  await faturometro.marcarSync('acc-ontem3', { backfill_dia: '2026-07-10', backfill_status: 'rodando' });
+  await isolarVarreduraDeOntem('acc-ontem3');
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null, truncado: false });
+  try {
+    await faturometro.varreduraDeOntem(todayISO(), [{ accountId: 'acc-ontem3' }]);
+  } finally { meli.ordersOfDay = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-ontem3' }).first();
+  assert.equal(sync.reconciliado_dia, todayISO());
+  assert.equal(sync.backfill_dia, '2026-07-10', 'o carimbo da varredura não pode zerar o backfill');
+  assert.equal(sync.backfill_status, 'rodando');
+});
+
+test('conta que falha na varredura de ontem NÃO é carimbada — tenta de novo no ciclo seguinte', async () => {
+  await semear('acc-ontem4', '7304');
+  await isolarVarreduraDeOntem('acc-ontem4');
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: { message: 'token revogado' } });
+  try {
+    await faturometro.varreduraDeOntem(todayISO(), [{ accountId: 'acc-ontem4' }]);
+  } finally { meli.ordersOfDay = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-ontem4' }).first();
+  assert.equal(sync.reconciliado_dia, null, 'só o sucesso carimba o dia');
+  assert.ok(sync.erro);
 });
 
 // ── backfill ─────────────────────────────────────────────────────────────────

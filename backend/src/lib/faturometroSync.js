@@ -160,6 +160,9 @@ async function handleNotification(body) {
 const JANELA_LIVRO_DIAS = 70; // cobre com folga o dia equivalente do mês anterior
 const JANELA_RECONCILIA_MS = 10 * 60 * 1000;
 const CONTAS_POR_CICLO = 5; // rodízio: com 40+ contas, tudo de uma vez derruba o ciclo
+// Ontem entra com uma cota menor que hoje, de propósito: é uma correção diária,
+// não o número ao vivo, e cada conta só precisa dela uma vez por dia.
+const CONTAS_ONTEM_POR_CICLO = 2;
 const BACKFILL_DIAS_POR_CICLO = 3;
 
 // Id do vendedor no ML. Vem da conexão; só chama /users/me se ela não tiver.
@@ -324,7 +327,56 @@ async function runQueue() {
     await reconcileAccount(c.id, hoje).catch(() => {});
   }
 
+  // DEPOIS de hoje, nunca antes: a varredura de ontem não pode atrasar o número
+  // ao vivo, que é a razão de a tela existir.
+  await varreduraDeOntem(hoje, contas).catch(() => {});
+
   await backfillStep(hoje).catch(() => {});
+}
+
+// Uma passada em ONTEM por conta por dia.
+//
+// "Dia fechado é imutável" só vale para um dia de fato fechado — e o código
+// fechava o dia enquanto ele ainda estava aberto: o rodízio só mirava `hoje` e o
+// backfill carimbava o dia corrente como preenchido no meio da tarde. No Render
+// free, a última conferência de um dia acabava sendo a última vez que alguém
+// abriu a tela; todo pedido criado depois disso só entrava se o webhook pegasse
+// a instância acordada. O resto nunca era recuperado, e o consolidado — logo o
+// total do mês e a comparação mês a mês — escorria para baixo um pouco a cada
+// dia, para sempre.
+//
+// O carimbo é `reconciliado_dia` (patch de UMA chave: marcarSync mescla só o que
+// vem no patch, e é isso que preserva backfill_dia/backfill_status). Só carimba
+// no sucesso: falhou, tenta de novo no ciclo seguinte. A ordem é a mesma dos
+// outros rodízios (mais atrasada primeiro), então conta quebrada não monopoliza
+// as vagas.
+async function varreduraDeOntem(hojeISO, contas) {
+  const hoje = hojeISO || todayISO();
+  const ontem = addDaysISO(hoje, -1);
+  const lista = contas || (await scopedAccounts());
+  if (!lista.length) return null;
+
+  const syncs = await db('faturometro_sync').whereIn('account_id', lista.map((c) => c.accountId));
+  const porConta = new Map(syncs.map((s) => [s.account_id, s]));
+
+  const pendentes = lista
+    .map((c) => ({ id: c.accountId, sync: porConta.get(c.accountId) }))
+    .filter((x) => !x.sync || x.sync.reconciliado_dia !== hoje)
+    .sort((a, b) => {
+      const ta = a.sync && a.sync.atualizado_em ? Date.parse(a.sync.atualizado_em) : 0;
+      const tb = b.sync && b.sync.atualizado_em ? Date.parse(b.sync.atualizado_em) : 0;
+      return ta - tb;
+    })
+    .slice(0, CONTAS_ONTEM_POR_CICLO);
+
+  let feitas = 0;
+  for (const c of pendentes) {
+    const r = await reconcileAccount(c.id, ontem).catch(() => ({ ok: false }));
+    if (!r.ok) continue;
+    await marcarSync(c.id, { reconciliado_dia: hoje });
+    feitas += 1;
+  }
+  return { contas: feitas, dia: ontem };
 }
 
 // O backfill precisa alcançar o dia 1 do mês ANTERIOR — é o que a comparação
@@ -433,5 +485,5 @@ function kick() {
 module.exports = {
   marcarSync, recalcDay, saveOrderRow, ingestOrder, handleNotification,
   reconcileAccount, purgeOldOrders, scopedAccounts, runQueue, kick,
-  backfillTarget, backfillStep, backfillProgress,
+  backfillTarget, backfillStep, backfillProgress, varreduraDeOntem,
 };
