@@ -90,4 +90,18 @@ async function ingestOrder(accountId, orderId) {
   return saveOrderRow(row);
 }
 
-module.exports = { marcarSync, recalcDay, saveOrderRow, ingestOrder };
+// Notificação do Mercado Livre → pedido no livro. Só nos interessa `orders_v2`;
+// qualquer outra coisa (tópico diferente, vendedor que não conectou conosco,
+// corpo incompleto) sai em silêncio, porque reenviar não resolveria nada.
+async function handleNotification(body) {
+  if (!body || body.topic !== 'orders_v2') return null;
+  const mlUserId = body.user_id != null ? String(body.user_id) : '';
+  const orderId = String(body.resource || '').split('/').filter(Boolean).pop() || '';
+  if (!mlUserId || !orderId) return null;
+
+  const conn = await db('meli_connections').where({ ml_user_id: mlUserId }).first();
+  if (!conn) return null;
+  return ingestOrder(conn.account_id, orderId);
+}
+
+module.exports = { marcarSync, recalcDay, saveOrderRow, ingestOrder, handleNotification };

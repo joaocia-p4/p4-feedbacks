@@ -201,3 +201,54 @@ test('marcarSync com patch parcial preserva os campos que não vieram no patch (
   assert.equal(sync.backfill_dia, '2026-07-01');
   assert.equal(sync.erro, 'x');
 });
+
+// ── webhook ──────────────────────────────────────────────────────────────────
+// mlUserId '70001'/'70002' (em vez de '777'/'888'): esses dois já são usados por
+// 'acc-excecao' e 'acc-concorr' mais acima neste arquivo, e meli_connections não
+// tem unicidade em ml_user_id — reaproveitar colidiria e o where().first() do
+// handleNotification pegaria a conta errada.
+test('notificação de orders_v2 grava o pedido da conta certa', async () => {
+  await semear('acc-hook', '70001');
+  const original = meli.fetchOrder;
+  meli.fetchOrder = async (accountId) => {
+    assert.equal(accountId, 'acc-hook', 'buscou na conta errada');
+    return { ok: true, status: 200, data: cru(60, 400, 1, 'b1') };
+  };
+  try {
+    await faturometro.handleNotification({ topic: 'orders_v2', user_id: 70001, resource: '/orders/60' });
+  } finally { meli.fetchOrder = original; }
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-hook', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 400);
+});
+
+test('a mesma notificação repetida não dobra o número', async () => {
+  await semear('acc-hook2', '70002');
+  const original = meli.fetchOrder;
+  meli.fetchOrder = async () => ({ ok: true, status: 200, data: cru(70, 400, 1, 'b1') });
+  const nota = { topic: 'orders_v2', user_id: 70002, resource: '/orders/70' };
+  try {
+    await faturometro.handleNotification(nota);
+    await faturometro.handleNotification(nota);
+    await faturometro.handleNotification(nota);
+  } finally { meli.fetchOrder = original; }
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-hook2', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 400);
+  assert.equal(dia.pedidos, 1);
+});
+
+test('tópico diferente de orders_v2 é ignorado', async () => {
+  const r = await faturometro.handleNotification({ topic: 'items', user_id: 777, resource: '/items/MLB1' });
+  assert.equal(r, null);
+});
+
+test('user_id sem conexão é ignorado sem quebrar', async () => {
+  const r = await faturometro.handleNotification({ topic: 'orders_v2', user_id: 999999, resource: '/orders/1' });
+  assert.equal(r, null);
+});
+
+test('notificação sem resource é ignorada', async () => {
+  const r = await faturometro.handleNotification({ topic: 'orders_v2', user_id: 777 });
+  assert.equal(r, null);
+});

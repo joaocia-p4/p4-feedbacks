@@ -8,6 +8,7 @@ const db = require('../db/knex');
 const clientService = require('../services/clientService');
 const reportService = require('../services/reportService');
 const meli = require('../services/meliService');
+const faturometroSync = require('../lib/faturometroSync');
 
 const router = express.Router();
 const FRONT = config.frontendUrl;
@@ -119,16 +120,17 @@ router.get(
 );
 
 // ── Notificações / webhook (público) ─────────────────────────────────────────
-// O Mercado Livre exige uma URL de notificações no app. Por ora apenas
-// confirmamos o recebimento (200) para o ML não ficar reenviando; o
-// processamento em tempo real (novos pedidos etc.) fica para uma fase futura.
+// O Mercado Livre espera resposta em ~500ms e reenvia se demorar. Por isso
+// respondemos 200 ANTES de processar; o pedido entra no livro do Faturômetro em
+// segundo plano. Erro no processamento não pode virar erro de resposta — quem
+// conserta o que se perder é a reconciliação.
 router.post('/mercadolivre/notifications', (req, res) => {
-  try {
-    const b = req.body || {};
-    // eslint-disable-next-line no-console
-    console.log('[meli] notificação:', b.topic || '?', b.resource || '');
-  } catch (_e) {}
+  const body = req.body || {};
   res.sendStatus(200);
+  faturometroSync.handleNotification(body).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.error('[meli] notificação falhou:', body.topic || '?', body.resource || '', e.message);
+  });
 });
 router.get('/mercadolivre/notifications', (_req, res) => res.sendStatus(200));
 
