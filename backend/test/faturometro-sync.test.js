@@ -145,3 +145,59 @@ test('ingestOrder devolve null e registra o erro quando o ML recusa', async () =
   const sync = await db('faturometro_sync').where({ account_id: 'acc-erro' }).first();
   assert.ok(sync.erro, 'esperava o erro registrado em faturometro_sync');
 });
+
+// ── revisão pré-merge: exceção do ML e escrita concorrente ───────────────────
+test('ingestOrder captura exceção lançada por fetchOrder (ex.: conta sem conexão/token sem refresh) e registra o erro sem propagar', async () => {
+  await semear('acc-excecao', '777');
+  const original = meli.fetchOrder;
+  meli.fetchOrder = async () => { throw new Error('Conexão expirada. Reconecte a conta do Mercado Livre.'); };
+  try {
+    assert.equal(await faturometro.ingestOrder('acc-excecao', '60'), null);
+  } finally { meli.fetchOrder = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-excecao' }).first();
+  assert.ok(sync.erro, 'esperava o erro registrado em faturometro_sync');
+  assert.match(sync.erro, /60/);
+});
+
+test('dois saveOrderRow concorrentes do MESMO pedido não lançam e o consolidado fecha com um pedido só', async () => {
+  await semear('acc-concorr', '888');
+  const { orderRow } = require('../src/lib/faturometro');
+  const row = orderRow(cru(70, 500, 4, 'b7'), 'acc-concorr');
+
+  await assert.doesNotReject(Promise.all([
+    faturometro.saveOrderRow(row),
+    faturometro.saveOrderRow(row),
+  ]));
+
+  const linhas = await db('faturometro_orders').where({ order_id: '70' });
+  assert.equal(linhas.length, 1, 'esperava uma única linha no livro para o mesmo order_id');
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-concorr', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 500);
+  assert.equal(dia.pedidos, 1);
+});
+
+test('dois marcarSync concorrentes na mesma conta não lançam', async () => {
+  await semear('acc-sync-concorr', '999');
+
+  await assert.doesNotReject(Promise.all([
+    faturometro.marcarSync('acc-sync-concorr', { erro: 'e1' }),
+    faturometro.marcarSync('acc-sync-concorr', { erro: 'e2' }),
+  ]));
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-sync-concorr' }).first();
+  assert.ok(sync, 'esperava a linha de sync criada');
+  assert.ok(['e1', 'e2'].includes(sync.erro), 'esperava um dos dois erros gravado, sem lançar');
+});
+
+test('marcarSync com patch parcial preserva os campos que não vieram no patch (não pode zerar backfill)', async () => {
+  await semear('acc-patch', '1010');
+  await faturometro.marcarSync('acc-patch', { backfill_status: 'pronto', backfill_dia: '2026-07-01' });
+  await faturometro.marcarSync('acc-patch', { erro: 'x' });
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-patch' }).first();
+  assert.equal(sync.backfill_status, 'pronto');
+  assert.equal(sync.backfill_dia, '2026-07-01');
+  assert.equal(sync.erro, 'x');
+});
