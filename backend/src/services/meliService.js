@@ -183,14 +183,24 @@ function dateList(from, to) {
   return out;
 }
 
+// Teto de offset do /orders/search do Mercado Livre: além disso a API não pagina.
+const ORDERS_OFFSET_MAX = 1000;
+
 // Pedidos CRUS de um dia (fuso -03:00), paginando o /orders/search. O offset do
 // endpoint trava em 1000, por isso a varredura é dia a dia. Não filtra status:
 // faturamento é BRUTO, igual ao relatório.
+//
+// `truncado: true` = o dia tem MAIS pedidos do que o offset alcança, então a
+// resposta é um PEDAÇO do dia, não o dia inteiro. Sem esse sinal um dia cortado
+// é indistinguível de um dia completo, e quem reconcilia trataria a resposta
+// como autoritativa — apagando do livro pedidos reais que o webhook capturou
+// (ver reconcileAccount em lib/faturometroSync.js).
 async function ordersOfDay(accountId, sellerId, dia) {
   const pedidos = [];
   let erro = null;
   let offset = 0;
-  for (let i = 0; i < 25 && offset < 1000; i++) {
+  let total = 0;
+  for (let i = 0; i < 25 && offset < ORDERS_OFFSET_MAX; i++) {
     const q =
       `/orders/search?seller=${encodeURIComponent(sellerId)}` +
       `&order.date_created.from=${encodeURIComponent(dia + 'T00:00:00.000-03:00')}` +
@@ -200,11 +210,13 @@ async function ordersOfDay(accountId, sellerId, dia) {
     if (!r.ok) { erro = r.data; break; }
     const results = r.data.results || [];
     pedidos.push(...results);
-    const total = r.data.paging ? r.data.paging.total : results.length;
+    total = r.data.paging ? r.data.paging.total : results.length;
     offset += 50;
     if (offset >= total || results.length === 0) break;
   }
-  return { pedidos, erro };
+  // Só é truncado quando o laço PAROU no teto e ainda havia pedidos além dele.
+  // (Um erro no meio interrompe antes do teto e já é sinalizado por `erro`.)
+  return { pedidos, erro, truncado: offset >= ORDERS_OFFSET_MAX && offset < total };
 }
 
 // Um pedido específico — é o que o webhook chama ao receber uma notificação.

@@ -167,9 +167,17 @@ async function reconcileAccount(accountId, dia) {
   const rows = r.pedidos.map((o) => orderRow(o, accountId)).filter((x) => x && x.dia === dia);
   const ids = rows.map((x) => x.order_id);
 
-  const del = db('faturometro_orders').where({ account_id: accountId, dia });
-  if (ids.length) del.whereNotIn('order_id', ids);
-  await del.del();
+  // Dia TRUNCADO (mais pedidos do que o /orders/search pagina): a resposta é um
+  // PEDAÇO do dia, não o dia inteiro — logo não é autoritativa. Apagar "o que não
+  // veio" aqui destruiria pedidos reais que o webhook capturou, e o número cairia
+  // em silêncio para sempre. Os upserts continuam valendo (são correções de
+  // verdade); só o del() sai de cena, e a conta é marcada com erro para aparecer
+  // em `comErro` na tela.
+  if (!r.truncado) {
+    const del = db('faturometro_orders').where({ account_id: accountId, dia });
+    if (ids.length) del.whereNotIn('order_id', ids);
+    await del.del();
+  }
 
   // Upsert atômico por linha (mesmo helper de saveOrderRow) — não read-then-write:
   // o webhook pode estar gravando o MESMO order_id neste exato instante (mesma
@@ -179,6 +187,19 @@ async function reconcileAccount(accountId, dia) {
   }
 
   await recalcDay(accountId, dia);
+
+  // Truncado devolve ok:true de propósito: o dia FOI visitado e corrigido no que
+  // dava, e um ok:false faria o backfillStep parar nesse dia e tentar o mesmo dia
+  // para sempre, sem nunca alcançar o mês anterior. O erro registrado é o que
+  // conta a verdade para a tela.
+  if (r.truncado) {
+    await marcarSync(accountId, {
+      erro: `dia ${dia}: mais pedidos do que a API do Mercado Livre pagina (teto de 1.000); conferência parcial, nada foi apagado`,
+      reconciliado_em: agora(),
+    });
+    return { ok: true, truncado: true, pedidos: rows.length };
+  }
+
   await marcarSync(accountId, { erro: null, reconciliado_em: agora() });
   return { ok: true, pedidos: rows.length };
 }

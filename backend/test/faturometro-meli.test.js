@@ -140,6 +140,51 @@ test('ordersTotals continua somando o mesmo, agora em cima de ordersOfDay', asyn
   assert.equal(r.pedidos, 2);
 });
 
+// ── dia TRUNCADO: o /orders/search do ML trava o offset em 1000 ──────────────
+// Sem o sinal `truncado`, um dia cortado volta com erro:null e é indistinguível
+// de um dia completo — e a reconciliação apagaria do livro tudo que não coube na
+// resposta. É a revisão final da branch: "o número mente em silêncio".
+test('ordersOfDay marca truncado quando o dia tem mais pedidos do que o offset alcança', async () => {
+  let chamadas = 0;
+  global.fetch = async () => {
+    chamadas += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        results: Array.from({ length: 50 }, (_, i) => pedido(chamadas * 100 + i, 10)),
+        paging: { total: 5000 }, // muito além do teto de offset
+      }),
+    };
+  };
+
+  const r = await meli.ordersOfDay('acc-1', 'seller-9', '2026-08-06');
+
+  assert.equal(r.erro, null, 'truncado não é erro do ML: a resposta veio, só que cortada');
+  assert.equal(r.truncado, true, 'dia com mais pedidos que o teto tem de vir sinalizado');
+  assert.equal(r.pedidos.length, 1000, 'para no teto de offset (20 páginas de 50)');
+});
+
+test('ordersOfDay NÃO marca truncado quando o dia coube inteiro na paginação', async () => {
+  const pagina1 = { results: Array.from({ length: 50 }, (_, i) => pedido(i, 10)), paging: { total: 60 } };
+  const pagina2 = { results: Array.from({ length: 10 }, (_, i) => pedido(100 + i, 10)), paging: { total: 60 } };
+  mockFetch([pagina1, pagina2]);
+
+  const r = await meli.ordersOfDay('acc-1', 'seller-9', '2026-08-06');
+
+  assert.equal(r.truncado, false);
+  assert.equal(r.pedidos.length, 60);
+});
+
+test('ordersTotals continua com a MESMA assinatura e o mesmo retorno (truncado é aditivo)', async () => {
+  mockFetch([{ results: [pedido(1, 100), pedido(2, 50)], paging: { total: 2 } }]);
+
+  const r = await meli.ordersTotals('acc-1', 'seller-9', '2026-08-06', '2026-08-06');
+
+  assert.deepEqual(Object.keys(r).sort(), ['erro', 'faturamento', 'pedidos', 'vendas']);
+  assert.equal(r.faturamento, 150);
+});
+
 test('fetchOrder busca um pedido pelo id', async () => {
   const chamadas = mockFetch([pedido(2000003508419013, 219.9)]);
 

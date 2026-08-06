@@ -389,6 +389,58 @@ test('reconciliação com resposta boa e ZERO pedidos apaga o dia inteiro e zera
   assert.equal(dia.pedidos, 0);
 });
 
+// ── revisão final da branch: dia TRUNCADO não é dia completo ─────────────────
+// ordersOfDay para no teto de offset do ML e, antes, devolvia erro:null — um dia
+// cortado passava por dia inteiro e o del() abaixo apagava do livro todo pedido
+// que não coubesse na resposta. Numa conta com mais de ~1.000 pedidos/dia isso
+// DESTRÓI receita que o webhook já tinha capturado, e o número passa a mentir em
+// silêncio, sem nenhum erro na tela. ml_user_id 7001-7002: faixa nova.
+test('reconciliação de dia TRUNCADO não apaga nada do livro, mantém os upserts e registra o erro', async () => {
+  await semear('acc-trunc', '7001');
+  const { orderRow } = require('../src/lib/faturometro');
+  // Pedido real, capturado pelo webhook, que NÃO cabe na resposta cortada.
+  await faturometro.saveOrderRow(orderRow(cru(600, 400, 1, 'b1'), 'acc-trunc'));
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [cru(601, 100, 1, 'b2')], erro: null, truncado: true });
+  try {
+    const r = await faturometro.reconcileAccount('acc-trunc', '2026-08-06');
+    assert.equal(r.truncado, true, 'a reconciliação tem de propagar que o dia veio cortado');
+    assert.equal(r.ok, true, 'ok:true de propósito — ok:false travaria o backfill nesse dia para sempre');
+  } finally { meli.ordersOfDay = original; }
+
+  assert.ok(
+    await db('faturometro_orders').where({ order_id: '600' }).first(),
+    'dia truncado não pode apagar do livro um pedido real que só não coube na resposta',
+  );
+  assert.ok(
+    await db('faturometro_orders').where({ order_id: '601' }).first(),
+    'os upserts do que VEIO continuam valendo — são correção de verdade',
+  );
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-trunc', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 500, '400 (preservado) + 100 (upsert da resposta cortada)');
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-trunc' }).first();
+  assert.ok(sync.erro, 'dia cortado tem de aparecer em comErro na tela, não passar por conferência limpa');
+  assert.match(sync.erro, /2026-08-06/);
+});
+
+test('dia truncado não zera um erro anterior nem deixa a conta parecer conferida sem ressalva', async () => {
+  await semear('acc-trunc2', '7002');
+  await faturometro.marcarSync('acc-trunc2', { erro: 'algo antigo' });
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null, truncado: true });
+  try {
+    await faturometro.reconcileAccount('acc-trunc2', '2026-08-06');
+  } finally { meli.ordersOfDay = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-trunc2' }).first();
+  assert.ok(sync.erro, 'truncado não pode passar por erro:null');
+  assert.ok(sync.reconciliado_em, 'o dia FOI visitado: o rodízio precisa andar');
+});
+
 // ── revisão pós-Task 6: o motor de segundo plano ─────────────────────────────
 test('kick() com FATUROMETRO_BACKGROUND=off não dispara nada (a suíte de leitura não pode bater na API real)', async () => {
   await semear('acc-off', '2003');
