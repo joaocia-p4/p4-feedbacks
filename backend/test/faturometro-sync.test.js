@@ -471,3 +471,77 @@ test('rodízio: conta nunca reconciliada entra antes de conta reconciliada há m
   assert.notEqual(idxVelha, -1, 'esperava a conta reconciliada há muito tempo no rodízio');
   assert.ok(idxNova < idxVelha, 'conta nunca reconciliada (t=0) tem de vir antes da reconciliada há muito tempo');
 });
+
+// ── backfill ─────────────────────────────────────────────────────────────────
+// backfillStep pega a primeira conta do escopo que não está 'pronto'. A partir
+// dos testes do motor acima (kick(), rodízio), que rodam runQueue() de verdade,
+// contas de testes anteriores (ex.: acc-livro) já ganharam linha em
+// faturometro_sync e ficam 'pendente'/'rodando' — sem isolar, elas ficariam na
+// frente da conta que cada teste abaixo quer observar. Mesma técnica do teste
+// de rodízio (que neutraliza reconciliado_em); aqui neutraliza-se backfill_status.
+async function isolarBackfill(exceto) {
+  const contas = await faturometro.scopedAccounts();
+  for (const c of contas) {
+    if (c.accountId === exceto) continue;
+    await faturometro.marcarSync(c.accountId, { backfill_status: 'pronto' });
+  }
+}
+
+test('o alvo do backfill é o dia 1 do mês anterior', () => {
+  assert.equal(faturometro.backfillTarget('2026-08-06'), '2026-07-01');
+  assert.equal(faturometro.backfillTarget('2026-01-15'), '2025-12-01');
+});
+
+test('backfillStep preenche do dia mais recente para o mais antigo', async () => {
+  await semear('acc-bf', '1515');
+  await isolarBackfill('acc-bf');
+  const vistos = [];
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (_acc, _seller, dia) => { vistos.push(dia); return { pedidos: [], erro: null }; };
+  try {
+    await faturometro.backfillStep('2026-08-06');
+  } finally { meli.ordersOfDay = original; }
+
+  // Primeiro lote: hoje e os dias imediatamente anteriores, do mais novo ao mais velho.
+  assert.equal(vistos[0], '2026-08-06');
+  assert.equal(vistos[1], '2026-08-05');
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-bf' }).first();
+  assert.ok(sync.backfill_dia <= '2026-08-05');
+});
+
+test('backfill retoma de onde parou, não recomeça do zero', async () => {
+  await semear('acc-bf2', '1616');
+  await faturometro.marcarSync('acc-bf2', { backfill_dia: '2026-08-01', backfill_status: 'rodando' });
+  await isolarBackfill('acc-bf2');
+
+  const vistos = [];
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (_acc, _seller, dia) => { vistos.push(dia); return { pedidos: [], erro: null }; };
+  try {
+    await faturometro.backfillStep('2026-08-06');
+  } finally { meli.ordersOfDay = original; }
+
+  assert.equal(vistos[0], '2026-07-31', 'devia continuar do dia anterior ao já preenchido');
+});
+
+test('backfill que alcança o alvo marca a conta como pronta', async () => {
+  await semear('acc-bf3', '1717');
+  await faturometro.marcarSync('acc-bf3', { backfill_dia: '2026-07-02', backfill_status: 'rodando' });
+  await isolarBackfill('acc-bf3');
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => ({ pedidos: [], erro: null });
+  try {
+    await faturometro.backfillStep('2026-08-06');
+  } finally { meli.ordersOfDay = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-bf3' }).first();
+  assert.equal(sync.backfill_status, 'pronto');
+  assert.equal(sync.backfill_dia, '2026-07-01');
+});
+
+test('progresso é a fração de dias já preenchidos', async () => {
+  const p = await faturometro.backfillProgress('2026-08-06');
+  assert.ok(p.progresso >= 0 && p.progresso <= 1, `progresso fora de 0..1: ${p.progresso}`);
+  assert.equal(typeof p.pronto, 'boolean');
+});

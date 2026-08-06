@@ -6,7 +6,7 @@
 const { v4: uuid } = require('uuid');
 const db = require('../db/knex');
 const meli = require('../services/meliService');
-const { orderRow, round2, addDaysISO } = require('./faturometro');
+const { orderRow, round2, addDaysISO, previousMonthWindow } = require('./faturometro');
 const { todayISO } = require('./p4');
 
 function agora() {
@@ -214,6 +214,81 @@ async function runQueue() {
   for (const c of vencidas) {
     await reconcileAccount(c.id, hoje).catch(() => {});
   }
+
+  await backfillStep(hoje).catch(() => {});
+}
+
+// O backfill precisa alcançar o dia 1 do mês ANTERIOR — é o que a comparação
+// mensal exige. Nada além disso: mais fundo custa chamadas e não é usado.
+function backfillTarget(hojeISO) {
+  return `${previousMonthWindow(hojeISO).ym}-01`;
+}
+
+// Um lote de backfill: pega a conta mais atrasada e preenche alguns dias, do
+// mais recente para o mais antigo — assim a tela fica útil desde o primeiro
+// lote. O progresso fica no banco, então uma hibernação do Render não perde nada.
+async function backfillStep(hojeISO) {
+  const hoje = hojeISO || todayISO();
+  const alvo = backfillTarget(hoje);
+
+  const contas = await scopedAccounts();
+  if (!contas.length) return null;
+  const syncs = await db('faturometro_sync').whereIn('account_id', contas.map((c) => c.accountId));
+  const porConta = new Map(syncs.map((s) => [s.account_id, s]));
+
+  const pendente = contas
+    .map((c) => ({ id: c.accountId, sync: porConta.get(c.accountId) }))
+    .find((x) => !x.sync || x.sync.backfill_status !== 'pronto');
+  if (!pendente) return null;
+
+  // Retoma do dia anterior ao último preenchido; se nunca rodou, começa em hoje.
+  const desde = pendente.sync && pendente.sync.backfill_dia
+    ? addDaysISO(pendente.sync.backfill_dia, -1)
+    : hoje;
+
+  let dia = desde;
+  let feitos = 0;
+  for (let i = 0; i < BACKFILL_DIAS_POR_CICLO && dia >= alvo; i++) {
+    const r = await reconcileAccount(pendente.id, dia);
+    if (!r.ok) break; // erro já registrado; tenta de novo no próximo ciclo
+    feitos += 1;
+    await marcarSync(pendente.id, { backfill_dia: dia, backfill_status: 'rodando' });
+    dia = addDaysISO(dia, -1);
+  }
+
+  if (dia < alvo) await marcarSync(pendente.id, { backfill_dia: alvo, backfill_status: 'pronto' });
+  return { conta: pendente.id, dias: feitos };
+}
+
+// Fração de pares (conta, dia) já preenchidos sobre o total alvo.
+async function backfillProgress(hojeISO) {
+  const hoje = hojeISO || todayISO();
+  const alvo = backfillTarget(hoje);
+  const contas = await scopedAccounts();
+  if (!contas.length) return { pronto: true, progresso: 1, etapa: null };
+
+  const syncs = await db('faturometro_sync').whereIn('account_id', contas.map((c) => c.accountId));
+  const porConta = new Map(syncs.map((s) => [s.account_id, s]));
+
+  // Nº de dias entre o alvo e hoje (inclusive) — o denominador por conta.
+  let totalDias = 0;
+  for (let d = hoje; d >= alvo; d = addDaysISO(d, -1)) totalDias += 1;
+
+  let feitos = 0;
+  let prontas = 0;
+  for (const c of contas) {
+    const s = porConta.get(c.accountId);
+    if (s && s.backfill_status === 'pronto') { feitos += totalDias; prontas += 1; continue; }
+    if (!s || !s.backfill_dia) continue;
+    for (let d = hoje; d >= s.backfill_dia; d = addDaysISO(d, -1)) feitos += 1;
+  }
+
+  const pronto = prontas === contas.length;
+  return {
+    pronto,
+    progresso: Math.min(1, Math.round((feitos / (totalDias * contas.length)) * 100) / 100),
+    etapa: pronto ? null : 'histórico do mês',
+  };
 }
 
 // Dispara o motor sem bloquear quem chamou. A trava garante um ciclo por vez —
@@ -238,4 +313,5 @@ function kick() {
 module.exports = {
   marcarSync, recalcDay, saveOrderRow, ingestOrder, handleNotification,
   reconcileAccount, purgeOldOrders, scopedAccounts, runQueue, kick,
+  backfillTarget, backfillStep, backfillProgress,
 };
