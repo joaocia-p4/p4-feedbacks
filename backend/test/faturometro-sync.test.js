@@ -650,7 +650,13 @@ test('conta cujo reconcileAccount LANÇA (exceção, não erro tratado) também 
   assert.ok(sadia && sadia.backfill_dia, 'a conta sadia devia ter avançado, mesmo com a quebrada lançando exceção');
 });
 
-test('conta que lança exceção na reconciliação não monopoliza as vagas de runQueue', async () => {
+// Nota: com só 1 quebrada + 1 sadia (bem abaixo do teto de CONTAS_POR_CICLO),
+// as duas cabem no MESMO ciclo independente da ordenação — este teste NÃO
+// cobre monopolização em escala (isso é o teste "com 5 ou mais contas
+// travadas..." abaixo, no tamanho real de CONTAS_POR_CICLO). O que este teste
+// prova: runQueue não trava com uma exceção no meio do rodízio, e o erro fica
+// registrado (diagnóstico) em vez de a conta ficar muda.
+test('conta que lança exceção na reconciliação não impede outra conta pendente de ser reconciliada no mesmo ciclo, e o erro fica registrado', async () => {
   await semear('acc-rec-quebrada', '4004');
   await semear('acc-rec-sadia', '4005');
   await isolarReconciliacao('acc-rec-quebrada', 'acc-rec-sadia');
@@ -671,6 +677,54 @@ test('conta que lança exceção na reconciliação não monopoliza as vagas de 
 
   const quebrada = await db('faturometro_sync').where({ account_id: 'acc-rec-quebrada' }).first();
   assert.ok(quebrada && quebrada.erro, 'esperava o erro capturado e registrado para a conta quebrada (sem isso ela fica sem NENHUM diagnóstico)');
+});
+
+// revisão pós-round-2: ordenar as vencidas por reconciliado_em (em vez de
+// atualizado_em) prendia uma conta que só falha na chave 0 para sempre — e
+// com CONTAS_POR_CICLO (5) ou mais contas quebradas, elas tomavam 100% das
+// vagas de TODO ciclo, starvation total das contas sadias (não só "empurra
+// pra fora às vezes"). Este teste roda no tamanho real do teto para provar
+// isso — o teste anterior (1 quebrada + 1 sadia) fica abaixo do teto e não
+// pega esse caso. ml_user_id 5001-5006: faixa nova.
+test('com CONTAS_POR_CICLO (5) ou mais contas travadas em erro, o rodízio da reconciliação ainda alcança a conta sadia', async () => {
+  const quebradas = ['acc-rec5-q1', 'acc-rec5-q2', 'acc-rec5-q3', 'acc-rec5-q4', 'acc-rec5-q5'];
+  const sadia = 'acc-rec5-sadia';
+  const todos = [...quebradas, sadia];
+  const mlIds = ['5001', '5002', '5003', '5004', '5005', '5006'];
+
+  for (let i = 0; i < todos.length; i++) {
+    await semear(todos[i], mlIds[i]);
+    // backfill 'pronto' de saída: reconcileAccount grava reconciliado_em em
+    // QUALQUER sucesso, mesmo para um dia passado — se o backfillStep do fim
+    // do mesmo runQueue() pegasse uma destas contas, poderia "aprovar" a
+    // sadia por um caminho que não é o rodízio de reconciliação que este
+    // teste quer isolar.
+    await faturometro.marcarSync(todos[i], { backfill_status: 'pronto' });
+  }
+  await isolarReconciliacao(...todos);
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (accountId) => (
+    quebradas.includes(accountId)
+      ? { pedidos: [], erro: { message: 'token revogado' } }
+      : { pedidos: [], erro: null }
+  );
+  try {
+    await faturometro.runQueue();
+    await faturometro.runQueue();
+    await faturometro.runQueue();
+  } finally { meli.ordersOfDay = original; }
+
+  const syncSadia = await db('faturometro_sync').where({ account_id: sadia }).first();
+  assert.ok(
+    syncSadia && syncSadia.reconciliado_em,
+    'CONTAS_POR_CICLO(=5) contas travadas em erro não podem esgotar todas as vagas para sempre: a 6ª conta (sadia) precisa ter sido reconciliada em algum ciclo',
+  );
+
+  for (const q of quebradas) {
+    const s = await db('faturometro_sync').where({ account_id: q }).first();
+    assert.ok(s && s.erro, `esperava erro registrado para ${q}`);
+  }
 });
 
 // ── backfillProgress ─────────────────────────────────────────────────────────

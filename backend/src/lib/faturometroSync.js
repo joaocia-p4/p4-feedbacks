@@ -218,13 +218,23 @@ async function runQueue() {
   const vencidas = contas
     .map((c) => ({ id: c.accountId, sync: porConta.get(c.accountId) }))
     .filter((x) => {
+      // Vencimento continua por reconciliado_em: uma conta quebrada (que
+      // nunca chega ao sucesso) continua vencida — e deve mesmo.
       const t = x.sync && x.sync.reconciliado_em ? Date.parse(x.sync.reconciliado_em) : 0;
       return Date.now() - t > JANELA_RECONCILIA_MS;
     })
     .sort((a, b) => {
-      const ta = a.sync && a.sync.reconciliado_em ? Date.parse(a.sync.reconciliado_em) : 0;
-      const tb = b.sync && b.sync.reconciliado_em ? Date.parse(b.sync.reconciliado_em) : 0;
-      return ta - tb; // a mais antiga primeiro
+      // Prioridade dentro das vencidas por atualizado_em (não reconciliado_em):
+      // marcarSync carimba atualizado_em tanto no sucesso quanto no erro, então
+      // quem acabou de ser TENTADA (deu certo ou não) vai pro fim da fila.
+      // Ordenar por reconciliado_em aqui prenderia uma conta que só falha na
+      // chave 0 para sempre — com CONTAS_POR_CICLO ou mais contas quebradas,
+      // elas tomariam 100% das vagas em todo ciclo e nenhuma conta sadia
+      // jamais seria reconciliada (starvation total, não parcial). Mesmo
+      // princípio já usado no rodízio do backfillStep.
+      const ta = a.sync && a.sync.atualizado_em ? Date.parse(a.sync.atualizado_em) : 0;
+      const tb = b.sync && b.sync.atualizado_em ? Date.parse(b.sync.atualizado_em) : 0;
+      return ta - tb; // nunca tentada (0) vem primeiro
     })
     .slice(0, CONTAS_POR_CICLO);
 
