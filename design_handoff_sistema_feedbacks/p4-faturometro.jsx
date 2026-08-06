@@ -64,33 +64,52 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
     return () => clearInterval(t);
   }, []);
 
+  // Guarda de desmonte que `carregar` de fato enxerga (uma variável local ao
+  // efeito de polling não alcança este callback, que sobrevive à requisição
+  // em voo). Reataca `true` a cada montagem — inclusive a remontagem "fake"
+  // do StrictMode em dev — e vira `false` só no cleanup.
+  const vivoRef = React.useRef(true);
+  React.useEffect(() => {
+    vivoRef.current = true;
+    return () => { vivoRef.current = false; };
+  }, []);
+
   const carregar = React.useCallback(async () => {
     try {
       if (!window.P4_API || !window.P4_API.isLogged()) throw new Error('Faça login para ver o Faturômetro.');
       const d = await window.P4_API.getFaturometro();
+      if (!vivoRef.current) return; // desmontou enquanto a requisição estava em voo
       setData(d);
       setAtualizadoEm(new Date());
       setErr('');
     } catch (e) {
+      if (!vivoRef.current) return;
       // Erro não apaga o último número: a tela envelhece o selo em vez de zerar.
       setErr(e.message || 'Falha ao atualizar.');
     }
   }, []);
 
   // Polling pausado com a aba em segundo plano — não faz sentido consultar
-  // (e gastar chamada) uma tela que ninguém está olhando.
+  // (e gastar chamada) uma tela que ninguém está olhando. Um único
+  // agendador: nunca há mais de um `setTimeout` pendente por vez — ao voltar
+  // o foco, `aoVoltar` cancela o tique agendado e reentra no `ciclo` na hora,
+  // em vez de deixar os dois brigarem por qual `setState` chega por último.
   React.useEffect(() => {
-    let vivo = true;
     let timer = null;
     const ciclo = async () => {
-      if (!vivo) return;
+      if (!vivoRef.current) return;
       if (!document.hidden) await carregar();
+      if (!vivoRef.current) return; // desmontou durante o await acima
       timer = setTimeout(ciclo, FAT_POLL_MS);
     };
+    const aoVoltar = () => {
+      if (document.hidden) return;
+      clearTimeout(timer);
+      ciclo();
+    };
     ciclo();
-    const aoVoltar = () => { if (!document.hidden) carregar(); };
     document.addEventListener('visibilitychange', aoVoltar);
-    return () => { vivo = false; clearTimeout(timer); document.removeEventListener('visibilitychange', aoVoltar); };
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', aoVoltar); };
   }, [carregar]);
 
   const forcar = async () => {
