@@ -2,6 +2,7 @@
 // Um "pedido" aqui é sempre uma LINHA DO LIVRO (faturometro_orders); a resposta
 // crua da API do Mercado Livre só aparece em orderRow(), que converte uma na outra.
 const { businessDateISO, businessTimezone } = require('./p4');
+const { monthRange } = require('./monthlyClosing');
 
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -84,11 +85,13 @@ function previousMonthWindow(hojeISO) {
   const py = m === 1 ? y - 1 : y;
   const pm = m === 1 ? 12 : m - 1;
   const ym = `${py}-${String(pm).padStart(2, '0')}`;
+
+  const range = monthRange(ym);
+  const ultimoDia = Number(range.fim.split('-')[2]);
   const dd = (n) => `${ym}-${String(n).padStart(2, '0')}`;
-  const ultimoDia = new Date(Date.UTC(py, pm, 0)).getUTCDate();
 
   if (d > ultimoDia) {
-    return { ym, completosAte: dd(ultimoDia), diaParcial: null, parcial: false };
+    return { ym, completosAte: range.fim, diaParcial: null, parcial: false };
   }
   return { ym, completosAte: d === 1 ? null : dd(d - 1), diaParcial: dd(d), parcial: true };
 }
