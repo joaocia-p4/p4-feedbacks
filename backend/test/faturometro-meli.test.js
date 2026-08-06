@@ -96,6 +96,40 @@ test('ordersOfDay devolve o erro do ML sem lançar', async () => {
   assert.ok(r.erro);
 });
 
+// ── erro no MEIO da paginação: a página que já tinha voltado continua contada ──
+// (é o comportamento citado na restrição da tarefa — não pode regredir em silêncio)
+test('ordersOfDay mantém os pedidos da página que já chegou quando a página seguinte falha', async () => {
+  const pagina1 = { results: Array.from({ length: 50 }, (_, i) => pedido(i, 10)), paging: { total: 60 } };
+  let chamada = 0;
+  global.fetch = async () => {
+    chamada += 1;
+    if (chamada === 1) return { ok: true, status: 200, json: async () => pagina1 };
+    return { ok: false, status: 500, json: async () => ({ message: 'erro no ML' }) };
+  };
+
+  const r = await meli.ordersOfDay('acc-1', 'seller-9', '2026-08-06');
+
+  assert.equal(r.pedidos.length, 50);
+  assert.ok(r.erro);
+});
+
+test('ordersTotals soma a página que voltou antes do erro e propaga o erro', async () => {
+  const pagina1 = { results: Array.from({ length: 50 }, (_, i) => pedido(i, 10)), paging: { total: 60 } };
+  let chamada = 0;
+  global.fetch = async () => {
+    chamada += 1;
+    if (chamada === 1) return { ok: true, status: 200, json: async () => pagina1 };
+    return { ok: false, status: 500, json: async () => ({ message: 'erro no ML' }) };
+  };
+
+  const r = await meli.ordersTotals('acc-1', 'seller-9', '2026-08-06', '2026-08-06');
+
+  assert.equal(r.pedidos, 50);
+  assert.equal(r.faturamento, 500);
+  assert.equal(r.vendas, 50);
+  assert.ok(r.erro);
+});
+
 test('ordersTotals continua somando o mesmo, agora em cima de ordersOfDay', async () => {
   mockFetch([{ results: [pedido(1, 100), pedido(2, 50)], paging: { total: 2 } }]);
 
