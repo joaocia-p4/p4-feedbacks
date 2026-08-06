@@ -24,11 +24,27 @@ function scopedRows() {
     .whereNot('accounts.ativo', false)
     .select(
       'accounts.id as accountId',
-      'accounts.apelido as apelido',
       'clients.id as clienteId',
       'clients.loja as cliente'
     );
 }
+
+// Agrupa uma lista por uma coluna, numa passada. A alternativa — filtrar a lista
+// inteira por conta, dentro do laço de contas — é O(contas × pedidos): na escala
+// da carteira dá centenas de milhares de iterações por request, e o GET responde
+// a cada 30 s.
+function agrupar(lista, campo) {
+  const m = new Map();
+  for (const r of lista) {
+    const chave = r[campo];
+    const atual = m.get(chave);
+    if (atual) atual.push(r);
+    else m.set(chave, [r]);
+  }
+  return m;
+}
+const vazio = [];
+const de = (mapa, chave) => mapa.get(chave) || vazio;
 
 function somaDaily(rows) {
   return round2(rows.reduce((s, r) => s + (Number(r.faturamento) || 0), 0));
@@ -73,7 +89,8 @@ async function getFaturometro(hojeISO) {
 
   const erroPorConta = new Map(syncs.filter((s) => s.erro).map((s) => [s.account_id, s.erro]));
 
-  const doDia = (dia) => livro.filter((o) => o.dia === dia);
+  const livroPorDia = agrupar(livro, 'dia');
+  const doDia = (dia) => de(livroPorDia, dia);
   const hojePedidos = doDia(hoje);
   const ontemPedidos = doDia(ontem);
 
@@ -89,12 +106,22 @@ async function getFaturometro(hojeISO) {
   const antCompletos = janela.completosAte
     ? daily.filter((r) => r.dia >= `${janela.ym}-01` && r.dia <= janela.completosAte)
     : [];
-  const antParcial = janela.diaParcial
-    ? sumOrders(untilTimeOfDay(doDia(janela.diaParcial), agoraHHMMSS)).faturamento
-    : 0;
+  // O corte pelo horário sai UMA vez, aqui, e não uma vez por conta: é ele que
+  // paga businessTimeOf por pedido.
+  const antParcialPedidos = janela.diaParcial
+    ? untilTimeOfDay(doDia(janela.diaParcial), agoraHHMMSS)
+    : [];
+  const antParcial = sumOrders(antParcialPedidos).faturamento;
   const mesAnterior = round2(somaDaily(antCompletos) + antParcial);
 
-  // Uma linha por CLIENTE, somando as contas dele.
+  // Uma linha por CLIENTE, somando as contas dele. Cada lista é indexada por
+  // conta uma vez só — reencontrar as linhas de cada conta varrendo a lista
+  // inteira custava O(contas × pedidos) por request.
+  const hojePorConta = agrupar(hojePedidos, 'account_id');
+  const mesPorConta = agrupar(mesRows, 'account_id');
+  const antPorConta = agrupar(antCompletos, 'account_id');
+  const antParcialPorConta = agrupar(antParcialPedidos, 'account_id');
+
   const porCliente = new Map();
   for (const c of contas) {
     if (!porCliente.has(c.clienteId)) {
@@ -105,14 +132,12 @@ async function getFaturometro(hojeISO) {
     }
     const linha = porCliente.get(c.clienteId);
     linha.contas += 1;
-    linha.hoje = round2(linha.hoje + sumOrders(hojePedidos.filter((o) => o.account_id === c.accountId)).faturamento);
-    linha.mes = round2(linha.mes + somaDaily(mesRows.filter((r) => r.account_id === c.accountId)));
+    linha.hoje = round2(linha.hoje + sumOrders(de(hojePorConta, c.accountId)).faturamento);
+    linha.mes = round2(linha.mes + somaDaily(de(mesPorConta, c.accountId)));
     linha.anterior = round2(
       linha.anterior +
-      somaDaily(antCompletos.filter((r) => r.account_id === c.accountId)) +
-      (janela.diaParcial
-        ? sumOrders(untilTimeOfDay(doDia(janela.diaParcial).filter((o) => o.account_id === c.accountId), agoraHHMMSS)).faturamento
-        : 0)
+      somaDaily(de(antPorConta, c.accountId)) +
+      sumOrders(de(antParcialPorConta, c.accountId)).faturamento
     );
     if (erroPorConta.has(c.accountId)) linha.erro = erroPorConta.get(c.accountId);
   }

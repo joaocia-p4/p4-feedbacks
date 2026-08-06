@@ -1244,3 +1244,46 @@ test('mes: mês anterior sem o dia equivalente compara com o mês inteiro (anter
   assert.equal(p.mes.variacao, 1.6667, '(800-300)/300, arredondado a 4 casas');
   assert.equal(p.mes.anteriorParcial, false, 'fevereiro não tem dia 31: rótulo "vs mês inteiro"');
 });
+
+// ── revisão final da branch: a agregação por cliente ─────────────────────────
+// A soma por cliente re-varria a lista inteira de pedidos por conta
+// (O(contas × pedidos): ~500 mil iterações por request na escala da carteira).
+// Agora cada lista é indexada por conta uma vez. Este teste tranca a MATEMÁTICA
+// do caminho reescrito: duas contas do mesmo cliente, mês corrente vindo do
+// consolidado e o dia parcial do mês anterior cortado pelo horário — que é onde
+// a indexação por conta poderia trocar as bolas.
+test('a linha do cliente soma as duas contas: mês do consolidado e parcial do mês anterior cortado pelo horário', async () => {
+  await db('users').insert({ id: 'u-fat', nome: 'Ana', email: 'ana@fat.test', senha_hash: 'x', papel: 'analista' })
+    .onConflict('id').ignore();
+  await db('clients').insert({
+    id: 'c-duo-mes', loja: 'Loja Duo Mês', tipo: 'Loja',
+    analista_id: 'u-fat', agenda_freq: 'Semanal', agenda_dia_semana: 'Segunda',
+  }).onConflict('id').ignore();
+  for (const [id, ml] of [['acc-duo1', '7401'], ['acc-duo2', '7402']]) {
+    await db('accounts').insert({ id, client_id: 'c-duo-mes', marketplace: 'Mercado Livre', apelido: id, ativo: true })
+      .onConflict('id').ignore();
+    await db('meli_connections').insert({
+      id: 'conn-' + id, account_id: id, ml_user_id: ml, access_token: 'x',
+      expires_at: new Date(Date.now() + 3600e3).toISOString(),
+    }).onConflict('id').ignore();
+  }
+
+  // Mês corrente (junho/2026, hoje = dia 15), consolidado, uma conta em cada dia.
+  await plantarDaily('acc-duo1', '2026-06-01', 100);
+  await plantarDaily('acc-duo2', '2026-06-02', 200);
+  // Mês anterior (maio/2026): dias completos vão até 14.
+  await plantarDaily('acc-duo1', '2026-05-01', 50);
+  await plantarDaily('acc-duo2', '2026-05-14', 30);
+  // Dia equivalente (15/05): do LIVRO, cortado pelo horário atual.
+  await lancar('acc-duo1', 960, '2026-05-15', '00:00:01', 20, 1, 'b1'); // entra
+  await lancar('acc-duo2', 961, '2026-05-15', '00:00:02', 40, 1, 'b2'); // entra
+  await lancar('acc-duo2', 962, '2026-05-15', '23:59:59', 9999, 1, 'b3'); // depois de agora: fora
+
+  const p = await faturometroService.getFaturometro('2026-06-15');
+  const linha = p.clientes.find((c) => c.clienteId === 'c-duo-mes');
+
+  assert.equal(linha.contas, 2);
+  assert.equal(linha.mes, 300, '100 + 200 das duas contas');
+  // anterior = 50 + 30 (completos) + 20 + 40 (parcial cortado) = 140
+  assert.equal(linha.variacaoMes, 1.1429, '(300-140)/140, arredondado a 4 casas');
+});

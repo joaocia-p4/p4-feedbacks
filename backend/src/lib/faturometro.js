@@ -8,18 +8,37 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
-// 'HH:MM:SS' de um instante no fuso do negócio. hourCycle:'h23' é o que garante
-// 00 (e não 24) à meia-noite — hour12:false varia entre versões do ICU.
+// Formatador de hora memoizado. Construir um Intl.DateTimeFormat é caro (medido:
+// 9.000 construções = 225 ms; içado, 6 ms) e este está no caminho quente — um GET
+// do Faturômetro formata hoje + ontem + o dia equivalente do mês anterior, duas
+// vezes cada. Numa carteira com alguns milhares de pedidos/dia isso viravam
+// centenas de ms de CPU SÍNCRONA por request, travando o event loop a cada 30 s e
+// disputando espaço com o orçamento de resposta do webhook.
+//
+// A memo é CHAVEADA pelo fuso: os testes trocam BUSINESS_TZ em tempo de execução
+// e uma memo de valor único devolveria o formatador do fuso antigo.
+let fmtCache = null;
+let fmtCacheTz = null;
+function timeFormatter() {
+  const tz = businessTimezone();
+  if (!fmtCache || fmtCacheTz !== tz) {
+    fmtCacheTz = tz;
+    fmtCache = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23', // garante 00 (e não 24) à meia-noite; hour12:false varia entre versões do ICU
+    });
+  }
+  return fmtCache;
+}
+
+// 'HH:MM:SS' de um instante no fuso do negócio.
 function businessTimeOf(value) {
   const d = value instanceof Date ? value : new Date(String(value));
   if (isNaN(d)) return '00:00:00';
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: businessTimezone(),
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).format(d);
+  return timeFormatter().format(d);
 }
 
 function businessHourOf(value) {

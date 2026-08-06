@@ -26,6 +26,40 @@ test('meia-noite em São Paulo vira 00, não 24', () => {
   assert.equal(businessHourOf('2026-08-06T03:00:00.000Z'), 0);
 });
 
+// ── revisão final da branch: o formatador é caro e estava no caminho quente ──
+// Construir um Intl.DateTimeFormat por pedido custava centenas de ms de CPU
+// SÍNCRONA por request (medido: 9.000 construções = 225 ms), travando o event
+// loop a cada 30 s. A memo tem uma armadilha: os testes trocam BUSINESS_TZ em
+// tempo de execução, e uma memo de valor único devolveria o fuso antigo.
+test('o formatador de hora é construído uma vez, não uma vez por pedido', () => {
+  businessTimeOf('2026-08-06T13:45:28.000Z'); // aquece a memo do fuso atual
+
+  const original = Intl.DateTimeFormat;
+  let construcoes = 0;
+  Intl.DateTimeFormat = function (...args) { construcoes += 1; return new original(...args); };
+  Intl.DateTimeFormat.supportedLocalesOf = original.supportedLocalesOf;
+  try {
+    for (let i = 0; i < 500; i++) businessTimeOf('2026-08-06T13:45:28.000Z');
+  } finally { Intl.DateTimeFormat = original; }
+
+  assert.equal(construcoes, 0, `500 formatações não podem construir 500 formatadores; construiu ${construcoes}`);
+});
+
+test('businessTimeOf continua respeitando uma troca de BUSINESS_TZ depois da memoização', () => {
+  const original = process.env.BUSINESS_TZ;
+  const instante = '2026-08-06T13:45:28.000Z';
+  try {
+    process.env.BUSINESS_TZ = 'America/Sao_Paulo';
+    assert.equal(businessTimeOf(instante), '10:45:28');
+
+    process.env.BUSINESS_TZ = 'UTC';
+    assert.equal(businessTimeOf(instante), '13:45:28', 'a memo não pode prender o fuso antigo');
+
+    process.env.BUSINESS_TZ = 'America/Sao_Paulo';
+    assert.equal(businessTimeOf(instante), '10:45:28', 'nem o novo');
+  } finally { process.env.BUSINESS_TZ = original; }
+});
+
 test('hora sai como número de 0 a 23', () => {
   assert.equal(businessHourOf('2026-08-06T13:45:28.000Z'), 10);
   assert.equal(businessHourOf('2026-08-07T02:59:00.000Z'), 23); // 23h59 do dia 6 em SP
