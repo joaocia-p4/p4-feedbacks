@@ -490,6 +490,18 @@ async function isolarBackfill(...exceto) {
   }
 }
 
+// Mesma ideia, para o rodízio de RECONCILIAÇÃO (não o de backfill): marca as
+// demais contas como "acabadas de reconciliar" para elas não entrarem na
+// lista de vencidas de runQueue() e disputarem as CONTAS_POR_CICLO vagas com
+// as contas que o teste quer observar.
+async function isolarReconciliacao(...exceto) {
+  const contas = await faturometro.scopedAccounts();
+  for (const c of contas) {
+    if (exceto.includes(c.accountId)) continue;
+    await faturometro.marcarSync(c.accountId, { reconciliado_em: new Date().toISOString() });
+  }
+}
+
 test('o alvo do backfill é o dia 1 do mês anterior', () => {
   assert.equal(faturometro.backfillTarget('2026-08-06'), '2026-07-01');
   assert.equal(faturometro.backfillTarget('2026-01-15'), '2025-12-01');
@@ -576,6 +588,89 @@ test('conta cujo reconcileAccount falha sempre não trava o backfill das demais'
 
   const sadia = await db('faturometro_sync').where({ account_id: 'acc-bf-sadia' }).first();
   assert.ok(sadia && sadia.backfill_dia, 'a conta sadia devia ter avançado, mesmo com a quebrada travada em erro');
+});
+
+// ── reconcileAccount à prova de exceção ──────────────────────────────────────
+// A revisão foi além do erro TRATADO (r.erro do teste acima) e achou que
+// sellerIdOf/meli.ordersOfDay podem LANÇAR de verdade — ex.: renovação de
+// token recusada (meliService.getValidAccessToken/refreshTokens/postToken não
+// têm try/catch no meio do caminho). Sem captura dentro de reconcileAccount,
+// nem backfillStep nem o rodízio de runQueue (que já assumem que ela nunca
+// lança) registram QUALQUER coisa para a conta quebrada — nem erro, nem
+// atualizado_em — e ela trava o rodízio de vez.
+// ml_user_id 4001-4005: faixa nova, sem colisão com 777/888/1010-1414/
+// 1515-1717/2001-2006/3001-3004/70001-70002.
+test('reconcileAccount com meli.ordersOfDay que LANÇA (não que devolve erro) não propaga, registra o erro e preserva o livro', async () => {
+  await semear('acc-rec-excecao', '4001');
+  const { orderRow } = require('../src/lib/faturometro');
+  await faturometro.saveOrderRow(orderRow(cru(400, 500, 1, 'b1'), 'acc-rec-excecao')); // já tinha algo no livro
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async () => { throw new Error('token revogado'); };
+  try {
+    const r = await faturometro.reconcileAccount('acc-rec-excecao', '2026-08-06');
+    assert.equal(r.ok, false);
+  } finally { meli.ordersOfDay = original; }
+
+  const sync = await db('faturometro_sync').where({ account_id: 'acc-rec-excecao' }).first();
+  assert.ok(sync && sync.erro, 'esperava o erro registrado em faturometro_sync, mesmo tendo sido uma exceção');
+  assert.match(sync.erro, /token revogado/);
+
+  const dia = await db('faturometro_daily').where({ account_id: 'acc-rec-excecao', dia: '2026-08-06' }).first();
+  assert.equal(Number(dia.faturamento), 500, 'exceção não pode apagar o que já estava contado');
+});
+
+test('conta cujo reconcileAccount LANÇA (exceção, não erro tratado) também não trava o backfill das demais', async () => {
+  await semear('acc-bf-quebrada-exc', '4002');
+  await semear('acc-bf-sadia-exc', '4003');
+  await isolarBackfill('acc-bf-quebrada-exc', 'acc-bf-sadia-exc');
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (accountId) => {
+    if (accountId === 'acc-bf-quebrada-exc') throw new Error('token revogado');
+    return { pedidos: [], erro: null };
+  };
+  try {
+    // 1º ciclo: empate em "nunca tentada"; acc-bf-quebrada-exc vem primeiro
+    // (semeada antes) e lança no 1º dia.
+    const passo1 = await faturometro.backfillStep('2026-08-06');
+    assert.equal(passo1.conta, 'acc-bf-quebrada-exc');
+
+    // 2º ciclo: a quebrada acabou de ter atualizado_em carimbado pelo catch
+    // dentro de reconcileAccount; a sadia, nunca tentada, entra agora.
+    const passo2 = await faturometro.backfillStep('2026-08-06');
+    assert.equal(passo2.conta, 'acc-bf-sadia-exc');
+  } finally { meli.ordersOfDay = original; }
+
+  const quebrada = await db('faturometro_sync').where({ account_id: 'acc-bf-quebrada-exc' }).first();
+  assert.equal(quebrada.backfill_dia, null, 'conta que só lançou exceção não pode ter avançado o marcador');
+  assert.ok(quebrada.erro, 'esperava o erro capturado e registrado, mesmo tendo sido uma exceção');
+
+  const sadia = await db('faturometro_sync').where({ account_id: 'acc-bf-sadia-exc' }).first();
+  assert.ok(sadia && sadia.backfill_dia, 'a conta sadia devia ter avançado, mesmo com a quebrada lançando exceção');
+});
+
+test('conta que lança exceção na reconciliação não monopoliza as vagas de runQueue', async () => {
+  await semear('acc-rec-quebrada', '4004');
+  await semear('acc-rec-sadia', '4005');
+  await isolarReconciliacao('acc-rec-quebrada', 'acc-rec-sadia');
+  await isolarBackfill('acc-rec-quebrada', 'acc-rec-sadia'); // backfillStep do mesmo runQueue() não entra no caminho
+
+  const original = meli.ordersOfDay;
+  meli.ordersOfDay = async (accountId) => {
+    if (accountId === 'acc-rec-quebrada') throw new Error('token revogado');
+    return { pedidos: [], erro: null };
+  };
+  try {
+    await faturometro.runQueue();
+    await faturometro.runQueue(); // alguns ciclos — a quebrada não pode empurrar a sadia para fora
+  } finally { meli.ordersOfDay = original; }
+
+  const sadia = await db('faturometro_sync').where({ account_id: 'acc-rec-sadia' }).first();
+  assert.ok(sadia && sadia.reconciliado_em, 'a conta sadia devia ter sido reconciliada, mesmo com a quebrada lançando exceção');
+
+  const quebrada = await db('faturometro_sync').where({ account_id: 'acc-rec-quebrada' }).first();
+  assert.ok(quebrada && quebrada.erro, 'esperava o erro capturado e registrado para a conta quebrada (sem isso ela fica sem NENHUM diagnóstico)');
 });
 
 // ── backfillProgress ─────────────────────────────────────────────────────────

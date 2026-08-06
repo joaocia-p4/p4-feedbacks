@@ -134,14 +134,31 @@ async function sellerIdOf(accountId) {
 //
 // Erro do ML NÃO zera nada: mantemos o que já estava contado (é receita que
 // aconteceu) e registramos o erro para a tela sinalizar "precisa reconectar".
+//
+// sellerIdOf/ordersOfDay tocam o Mercado Livre (token, rede) e podem LANÇAR em
+// vez de devolver erro tratado — ex.: renovação de token recusada
+// (meliService.getValidAccessToken/refreshTokens/postToken lançam direto, sem
+// try/catch no meio do caminho até aqui). Mesmo padrão do ingestOrder: captura,
+// registra em faturometro_sync e devolve { ok: false } em vez de propagar. Sem
+// isso, os dois chamadores (runQueue e backfillStep) — que já assumem que esta
+// função nunca lança — ficam sem NENHUM registro da falha (nem erro, nem
+// atualizado_em), e a conta quebrada nunca sai da frente do rodízio.
 async function reconcileAccount(accountId, dia) {
-  const sellerId = await sellerIdOf(accountId);
+  let sellerId;
+  let r;
+  try {
+    sellerId = await sellerIdOf(accountId);
+    if (sellerId) r = await meli.ordersOfDay(accountId, sellerId, dia);
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    await marcarSync(accountId, { erro: msg.slice(0, 300) });
+    return { ok: false, erro: msg };
+  }
+
   if (!sellerId) {
     await marcarSync(accountId, { erro: 'conta sem conexão com o Mercado Livre' });
     return { ok: false, erro: 'sem conexão' };
   }
-
-  const r = await meli.ordersOfDay(accountId, sellerId, dia);
   if (r.erro) {
     await marcarSync(accountId, { erro: JSON.stringify(r.erro).slice(0, 300) });
     return { ok: false, erro: r.erro };
