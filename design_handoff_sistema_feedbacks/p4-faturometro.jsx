@@ -145,7 +145,7 @@ window.FatChart = FatChart;
 
 // Lista por cliente. Quem não vendeu hoje vai para o fim, zerado e em cinza —
 // zero é resposta legítima, não erro.
-function FatClientes({ clientes, onOpenClient }) {
+function FatClientes({ clientes, onOpenClient, limite }) {
   if (!clientes || !clientes.length) {
     return (
       <div style={{ padding: '28px 8px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
@@ -154,13 +154,16 @@ function FatClientes({ clientes, onOpenClient }) {
       </div>
     );
   }
+  // No modo TV a lista vira Top 5: a lista inteira exporia nome e faturamento
+  // de cada cliente para quem passa na sala. Sem limite, mostra tudo.
+  const visiveis = limite ? clientes.slice(0, limite) : clientes;
   return (
     <table className="fat-tab">
       <thead>
         <tr><th>Cliente</th><th>Hoje</th><th>Mês</th><th>vs mês passado</th></tr>
       </thead>
       <tbody>
-        {clientes.map((c) => (
+        {visiveis.map((c) => (
           <tr key={c.clienteId} className={c.hoje ? '' : 'fat-zerado'} onClick={() => onOpenClient && onOpenClient(c.clienteId)}>
             <td>
               {c.cliente}
@@ -379,8 +382,8 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
           </div>
 
           <div className="card" id="fat-clientes" style={{ marginTop: 18 }}>
-            <b style={{ fontSize: 14 }}>Por cliente</b>
-            <window.FatClientes clientes={clientes} onOpenClient={onOpenClient} />
+            <b className="fat-card-tit">{tv ? 'Top 5 clientes hoje' : 'Por cliente'}</b>
+            <window.FatClientes clientes={clientes} onOpenClient={onOpenClient} limite={tv ? 5 : 0} />
           </div>
 
           {data && data.backfill && !data.backfill.pronto
