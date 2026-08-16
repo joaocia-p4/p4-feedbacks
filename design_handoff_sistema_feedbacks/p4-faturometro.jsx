@@ -165,7 +165,10 @@ function FatClientes({ clientes, onOpenClient }) {
             <td>
               {c.cliente}
               {c.contas > 1 ? <span className="fat-chip fat-chip-neutro">{c.contas} contas</span> : null}
-              {c.erro ? <span className="fat-chip">reconectar</span> : null}
+              {/* "reconectar" é o conselho, não o diagnóstico: nem toda falha é
+                  token expirado. O motivo real vem em `c.erro` e ia embora sem
+                  ser mostrado — o title devolve ele a quem passar o mouse. */}
+              {c.erro ? <span className="fat-chip" title={c.erro}>reconectar</span> : null}
             </td>
             <td>{brMoeda(c.hoje)}</td>
             <td>{brMoeda(c.mes)}</td>
