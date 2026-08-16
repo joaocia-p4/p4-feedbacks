@@ -317,7 +317,7 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
       {tv
         ? <button className="fat-tv-sair" onClick={() => setTv(false)} title="Sair do Modo TV (Esc)">Sair</button>
         : null}
-      <window.TopBar title="Faturômetro" user={user} role={role} onLogout={onLogout} onManageUsers={onManageUsers} />
+      {tv ? null : <window.TopBar title="Faturômetro" user={user} role={role} onLogout={onLogout} onManageUsers={onManageUsers} />}
       <div className="page">
         <div className="page-inner">
 
@@ -345,10 +345,18 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
           <div className="fat-contexto">
             <span>{brNum(contas.conectadas)} contas conectadas</span>
             {contas.comErro ? <a className="fat-alerta" href="#fat-clientes">{contas.comErro} precisam reconectar</a> : null}
-            <button className="btn-ghost" onClick={forcar} disabled={forcando}>
-              {forcando ? 'conferindo…' : 'Conferir agora'}
-            </button>
-            <button className="btn-ghost" onClick={() => setTv(true)}>Modo TV</button>
+            {/* Dentro do modo TV nenhum dos dois faz sentido: um é operação de
+                mesa, o outro ligaria um modo já ligado. A SAÍDA não está aqui —
+                é o botão de canto mais o Esc, senão o painel entraria num modo
+                do qual não se sai com o mouse. */}
+            {tv ? null : (
+              <>
+                <button className="btn-ghost" onClick={forcar} disabled={forcando}>
+                  {forcando ? 'conferindo…' : 'Conferir agora'}
+                </button>
+                <button className="btn-ghost" onClick={() => setTv(true)}>Modo TV</button>
+              </>
+            )}
           </div>
 
           <div className="fat-grid">

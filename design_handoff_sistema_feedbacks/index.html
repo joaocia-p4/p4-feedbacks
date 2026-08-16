@@ -682,6 +682,12 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
    da tela (p4-shell.jsx), fora do alcance de uma classe no contêiner da tela. */
 .fat-tv-sair{position:fixed;top:14px;right:16px;z-index:60;border:1px solid var(--line);background:rgba(255,255,255,.86);color:var(--ink-2);border-radius:999px;padding:8px 16px;font-size:14px;font-weight:700;cursor:pointer;opacity:.32;transition:opacity .2s var(--ease)}
 .fat-tv-sair:hover,.fat-tv-sair:focus-visible{opacity:1}
+
+/* Zerar --side-w faz as DUAS coisas: .app-side usa a variável como largura e
+   .shell a usa como padding-left. Mesmo truque do breakpoint mais acima. */
+body.fat-tv{--side-w:0px}
+body.fat-tv .app-side{display:none}
+body.fat-tv .page-inner{max-width:1760px;padding:20px 44px 32px}
 </style>
 </head>
 <body>
