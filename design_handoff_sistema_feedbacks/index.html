@@ -656,12 +656,21 @@ button:focus-visible,a:focus-visible,select:focus-visible,[role=button]:focus-vi
 .fat-alerta{color:var(--amber-ink);text-decoration:none;border-bottom:1px dashed currentColor}
 .fat-var{font-weight:700;font-size:13px}
 .fat-var-up{color:var(--green-ink)} .fat-var-down{color:var(--red-ink)} .fat-var-nd{color:var(--muted)}
-.fat-grid{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:18px}
+/* A coluna esquerda precisa caber "R$ 1.652.428,80" DUAS vezes lado a lado:
+   a 340px anteriores davam ~148px por célula para um texto que pede ~186px, e
+   a segunda coluna era empurrada para fora e cortada pelo overflow. */
+.fat-grid{display:grid;grid-template-columns:minmax(320px,460px) 1fr;gap:18px}
 @media (max-width:860px){.fat-grid{grid-template-columns:1fr}}
-.fat-metricas{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:14px}
+/* minmax(0,1fr) e não 1fr: `1fr` tem largura MÍNIMA igual ao conteúdo, então um
+   valor longo e sem ponto de quebra empurrava a coluna vizinha para fora do
+   container. Com minmax(0,...) as colunas dividem o espaço de verdade. */
+.fat-metricas{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:14px}
 .fat-metrica{background:#fff;padding:14px 12px;text-align:center;display:flex;flex-direction:column;gap:5px}
 .fat-metrica-lbl{font-size:11px;color:var(--muted);font-weight:600}
-.fat-metrica-val{font-size:19px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+/* Se um dia um valor ainda assim não couber, que ele termine em reticências
+   dentro da própria célula. Corte silencioso no meio do algarismo faz o número
+   parecer outro — "R$ 1.652.4" é um valor plausível e errado. */
+.fat-metrica-val{font-size:19px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fat-tab{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
 .fat-tab th{text-align:right;font-size:11px;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
 .fat-tab th:first-child{text-align:left}
