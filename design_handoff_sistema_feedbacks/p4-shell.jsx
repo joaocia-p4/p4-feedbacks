@@ -66,7 +66,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // ---------------------------------------------------------------- Sidebar (menu lateral)
-function Sidebar({ user, role, screen, onNav }) {
+function Sidebar({ role, screen, onNav }) {
   const I = window.Icons;
   const seesPanel = role === 'admin' || role === 'cs';
   const clientsActive = screen === 'clients' || screen === 'history' || screen === 'new' || screen === 'edit';
@@ -571,7 +571,7 @@ function App() {
       onSetAccent={(v) => setTweak('accent', v)}
       onManageUsers={() => setUsersOpen(true)} onLogout={logout} toast={toast} />;
   } else {
-    content = <window.Clients user={user} role={role} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onImport={() => setImportOpen(true)} onGotoDashboard={() => setScreen('dashboard')} toast={toast} />;
+    content = <window.Clients user={user} role={role} clients={clients} loading={clientsLoading} onOpenClient={openClient} onEditClient={editClient} onLogout={logout} onManageUsers={() => setUsersOpen(true)} onNewClient={newClient} onImport={() => setImportOpen(true)} toast={toast} />;
   }
 
   return (

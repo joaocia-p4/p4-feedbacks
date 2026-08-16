@@ -163,12 +163,6 @@ function agendaShort(a) {
 const WD_FROM_IDX = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 function localISO(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function weekdayName(isoStr) { return WD_FROM_IDX[new Date(isoStr + 'T00:00:00').getDay()]; }
-function isoWeek(d) {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = (t.getUTCDay() + 6) % 7; t.setUTCDate(t.getUTCDate() - day + 3);
-  const first = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
-  return 1 + Math.round(((t - first) / 86400000 - 3 + ((first.getUTCDay() + 6) % 7)) / 7);
-}
 function isDueOn(agenda, isoStr) {
   if (!agenda || !isoStr) return false;
   const d = new Date(isoStr + 'T00:00:00');
@@ -193,14 +187,6 @@ function prevScheduled(agenda, ref) {
   let guard = 0;
   while (d.getDay() !== target && guard < 8) { d = addDays(d, -1); guard++; }
   return d;
-}
-// overdue if the most recent scheduled date BEFORE asOf is newer than the last sent report
-function isOverdueBySchedule(agenda, lastSentISO, asOfISO) {
-  const asOf = asOfISO || P4_TODAY;
-  const yesterday = addDays(new Date(asOf + 'T00:00:00'), -1);
-  const ps = prevScheduled(agenda, yesterday);
-  if (!ps) return false;
-  return localISO(ps) > (lastSentISO || '0000-00-00');
 }
 // ── Regra por CICLO (espelho do backend lib/p4.js) ──
 // Início do ciclo atual: dia seguinte ao penúltimo envio agendado.

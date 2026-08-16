@@ -269,7 +269,7 @@ function ClientCard({ c, onOpen, onEdit, canManage }) {
   );
 }
 
-function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onLogout, onManageUsers, onNewClient, onImport, onGotoDashboard, toast }) {
+function Clients({ user, role, clients, loading, onOpenClient, onEditClient, onLogout, onManageUsers, onNewClient, onImport, toast }) {
   const I = window.Icons;
   const [q, setQ] = React.useState('');
   const [mk, setMk] = React.useState('Todos');

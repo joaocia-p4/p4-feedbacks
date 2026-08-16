@@ -221,7 +221,7 @@ function AnalystMetrics({ am }) {
   );
 }
 
-function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGotoClients, toast }) {
+function CSDashboard({ user, role, onLogout, onManageUsers, onOpenClient, onGotoClients }) {
   const I = window.Icons;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);

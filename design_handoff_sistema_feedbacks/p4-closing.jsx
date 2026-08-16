@@ -26,7 +26,6 @@ function mcHoje() {
   return iso.slice(0, 7);
 }
 
-const mcMoney = (v) => (v == null ? '—' : window.fmtMoneyShort(v));
 // Como mcMoney, mas sem abreviar acima de R$ 100 mil: esta tela é o registro
 // exato do mês (spec do fechamento manual), então o total do cliente precisa
 // bater, dígito a dígito, com a soma manual das contas abaixo dele.

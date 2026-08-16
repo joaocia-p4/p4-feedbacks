@@ -41,7 +41,6 @@ function readableInk(hex) {
   return '#' + to(hue + 1 / 3) + to(hue) + to(hue - 1 / 3);
 }
 
-const MARKETPLACES = ['Mercado Livre', 'Shopee', 'Magalu', 'Amazon', 'Tiktok'];
 const METRIC_KEYS = ['faturamento', 'vendas', 'receitaAds', 'vendasAds', 'investimento', 'roas', 'acos', 'tacos'];
 
 // Filtros das campanhas no relatório (por relatório, salvos no payload). O seletor
@@ -126,7 +125,7 @@ const DEFAULTS = {
   ],
 };
 
-function blankPeriod(n) {
+function blankPeriod() {
   return { label: '', periodoIni: '', periodoFim: '', faturamento: '', vendas: '', receitaAds: '', vendasAds: '', investimento: '', roas: '', acos: '', tacos: '' };
 }
 
@@ -252,81 +251,6 @@ function CalIcon() {
       <line x1="4.6" y1="1" x2="4.6" y2="3.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"></line>
       <line x1="9.4" y1="1" x2="9.4" y2="3.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"></line>
     </svg>
-  );
-}
-function CalendarPanel({ value, onPick, onClear }) {
-  const today = new Date();
-  const sel = parseIso(value);
-  const [view, setView] = useState(() => ({ y: today.getFullYear(), mo: today.getMonth() }));
-  const go = (delta) => setView((v) => { let mo = v.mo + delta, y = v.y; while (mo < 0) { mo += 12; y--; } while (mo > 11) { mo -= 12; y++; } return { y, mo }; });
-  const startDow = new Date(view.y, view.mo, 1).getDay();
-  const gridStart = new Date(view.y, view.mo, 1 - startDow);
-  const cells = Array.from({ length: 42 }, (_, i) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i));
-  const todayIso = dateToIso(today);
-  return (
-    <div className="cal">
-      <div className="cal-head">
-        <span className="cal-title">{MONTHS_PT[view.mo].charAt(0).toUpperCase() + MONTHS_PT[view.mo].slice(1)} de {view.y}</span>
-        <div className="cal-nav">
-          <button type="button" onClick={() => go(-1)} aria-label="Mês anterior">‹</button>
-          <button type="button" onClick={() => go(1)} aria-label="Próximo mês">›</button>
-        </div>
-      </div>
-      <div className="cal-wd">{WEEKDAYS_PT.map((w, i) => <span key={i}>{w}</span>)}</div>
-      <div className="cal-grid">
-        {cells.map((dt, i) => {
-          const iso = dateToIso(dt);
-          const out = dt.getMonth() !== view.mo;
-          const isSel = iso === value;
-          const isToday = iso === todayIso;
-          return <button type="button" key={i} className={'cal-day' + (out ? ' out' : '') + (isSel ? ' sel' : '') + (isToday && !isSel ? ' today' : '')} onClick={() => onPick(iso)}>{dt.getDate()}</button>;
-        })}
-      </div>
-      <div className="cal-foot">
-        <button type="button" className="cal-link" onClick={onClear}>Limpar</button>
-        <button type="button" className="cal-link" onClick={() => onPick(todayIso)}>Hoje</button>
-      </div>
-    </div>
-  );
-}
-function DateInput({ value, onChange, compact, placeholder }) {
-  const [open, setOpen] = useState(false);
-  const trigRef = useRef(null);
-  const popRef = useRef(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => { if (popRef.current && !popRef.current.contains(e.target) && trigRef.current && !trigRef.current.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
-    const onScroll = () => setOpen(false);
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', onScroll, true);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); window.removeEventListener('scroll', onScroll, true); };
-  }, [open]);
-  React.useLayoutEffect(() => {
-    if (!open || !popRef.current || !trigRef.current) return;
-    const t = trigRef.current.getBoundingClientRect();
-    const p = popRef.current;
-    const pw = p.offsetWidth, ph = p.offsetHeight;
-    let left = t.left;
-    if (left + pw > window.innerWidth - 8) left = Math.max(8, t.right - pw);
-    let top = t.bottom + 6;
-    if (top + ph > window.innerHeight - 8) top = Math.max(8, t.top - 6 - ph);
-    p.style.left = left + 'px'; p.style.top = top + 'px';
-  }, [open]);
-  const disp = fmtBR(value);
-  return (
-    <div className={'date-wrap' + (compact ? ' compact' : '')}>
-      <button type="button" ref={trigRef} className={'date-trigger' + (open ? ' open' : '') + (disp ? '' : ' empty')} onClick={() => setOpen((o) => !o)}>
-        <span className="date-txt">{disp || placeholder || 'dd/mm/aaaa'}</span>
-        <CalIcon />
-      </button>
-      {open ? (
-        <div className="cal-pop" ref={popRef}>
-          <CalendarPanel value={value} onPick={(iso) => { onChange(iso); setOpen(false); }} onClear={() => { onChange(''); setOpen(false); }} />
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -467,42 +391,6 @@ function CalcField({ label, value, suffix, tone, onTone }) {
   );
 }
 
-// derived metric field (ROAS / ACOS / TACOS) — toggles between automatic calc and manual entry
-function AutoMetricField({ label, suffix, auto, onAuto, value, onChange, calc, money, tone, onTone }) {
-  const shown = auto ? (calc != null ? window.fmtCalc(calc) : '—') : null;
-  return (
-    <div className={'amf' + (auto ? ' is-auto' : ' is-manual')}>
-      <div className="amf-head">
-        <span className="amf-label">{label}</span>
-        <button type="button" className={'amf-mode' + (auto ? ' on' : '')} onClick={() => onAuto(!auto)}
-          title={auto ? 'Calculado automaticamente — clique para inserir manualmente' : 'Manual — clique para calcular automaticamente'}>
-          <span className="amf-dot"></span>{auto ? 'Auto' : 'Manual'}
-        </button>
-      </div>
-      <div className="amf-val">
-        {auto
-          ? <span className="amf-num">{shown}</span>
-          : <input className="amf-input" value={value} placeholder="0,00" inputMode="decimal" onFocus={(e) => { try { e.target.select(); } catch (_) {} }} onChange={(e) => onChange(money ? maskBRL(e.target.value) : e.target.value)} />}
-        <span className="amf-suf">{suffix}</span>
-      </div>
-      {tone ? <ToneToggle value={tone} onChange={onTone} /> : null}
-    </div>
-  );
-}
-
-// segmented two-option toggle (e.g. Semanal / Mensal)
-function SegToggle({ label, value, options, onChange }) {
-  return (
-    <label className="field field-wide">
-      <span className="field-label"><span className="fl-txt">{label}</span></span>
-      <div className="seg" role="group">
-        {options.map((o) => (
-          <button type="button" key={o} className={'seg-btn' + (value === o ? ' on' : '')} onClick={() => onChange(o)}>{o}</button>
-        ))}
-      </div>
-    </label>
-  );
-}
 
 // ---- "antes da P4" baseline marker ----
 function PreToggle({ value, onChange, compact }) {
@@ -515,29 +403,6 @@ function PreToggle({ value, onChange, compact }) {
   );
 }
 
-// ---- date quick-presets (período) ----
-function fmtISO(dt) {
-  const y = dt.getFullYear(), m = String(dt.getMonth() + 1).padStart(2, '0'), d = String(dt.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-function buildPresets() {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const add = (dt, n) => { const x = new Date(dt); x.setDate(x.getDate() + n); return x; };
-  const y = add(today, -1);                         // ontem
-  const dow = (today.getDay() + 6) % 7;             // 0 = segunda
-  const thisMon = add(today, -dow);
-  const lastMon = add(thisMon, -7), lastSun = add(lastMon, 6);
-  const firstThis = new Date(today.getFullYear(), today.getMonth(), 1);
-  const firstLast = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const lastOfLast = new Date(today.getFullYear(), today.getMonth(), 0);
-  const esteFim = y >= firstThis ? y : today;
-  return [
-    { id: 'sem', label: 'Semana passada', ini: fmtISO(lastMon), fim: fmtISO(lastSun), per: 'Semanal' },
-    { id: '7d', label: 'Últimos 7 dias', ini: fmtISO(add(y, -6)), fim: fmtISO(y), per: 'Semanal' },
-    { id: 'mes', label: 'Este mês', ini: fmtISO(firstThis), fim: fmtISO(esteFim), per: 'Mensal' },
-    { id: 'mesp', label: 'Mês passado', ini: fmtISO(firstLast), fim: fmtISO(lastOfLast), per: 'Mensal' },
-  ];
-}
 function rangeDays(ini, fim) {
   if (!ini || !fim) return null;
   const a = new Date(ini + 'T00:00:00'), b = new Date(fim + 'T00:00:00');
@@ -546,17 +411,6 @@ function rangeDays(ini, fim) {
 }
 function brShort(iso) { if (!iso) return '—'; const p = iso.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}` : iso; }
 
-function PeriodPresets({ ini, fim, onPick }) {
-  return (
-    <div className="preset-row">
-      {buildPresets().map((p) => (
-        <button type="button" key={p.id}
-          className={'preset-chip' + (ini === p.ini && fim === p.fim ? ' on' : '')}
-          onClick={() => onPick(p)}>{p.label}</button>
-      ))}
-    </div>
-  );
-}
 
 // collapsible section wrapper that matches the .grp look
 function Section({ title, note, summary, collapsible, defaultOpen = true, children }) {
@@ -574,20 +428,6 @@ function Section({ title, note, summary, collapsible, defaultOpen = true, childr
   );
 }
 
-function SelectField({ label, value, options, onChange, placeholder }) {
-  return (
-    <label className="field field-wide">
-      <span className="field-label"><span className="fl-txt">{label}</span></span>
-      <div className={'field-in is-select' + (value ? '' : ' is-empty')}>
-        <select value={value} onChange={(e) => onChange(e.target.value)}>
-          {placeholder ? <option value="">{placeholder}</option> : null}
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <span className="affix affix-r sel-caret">▾</span>
-      </div>
-    </label>
-  );
-}
 
 // Dropdown customizado (mesma mecânica/estética do calendário: popup escuro,
 // acento verde, clique-fora/Esc). options = [{ value, label }].
@@ -939,7 +779,7 @@ function App() {
   const bootRef = useRef(null);
   if (bootRef.current === null) bootRef.current = consumeReportContext();
   const [d, setD] = useState(() => ensureObsBlocks(bootRef.current.initialD));
-  const [link, setLink] = useState(() => bootRef.current.link);
+  const [link] = useState(() => bootRef.current.link);
   const [mlBusy, setMlBusy] = useState(false);
   const [mlMsg, setMlMsg] = useState(null);
   const [campBusy, setCampBusy] = useState(false);
@@ -1047,7 +887,7 @@ function App() {
   useEffect(() => { try { link ? localStorage.setItem('p4-report-link', JSON.stringify(link)) : localStorage.removeItem('p4-report-link'); } catch (e) {} }, [link]);
 
   // remembered store/client names — typed once, selectable afterwards
-  const [lojas, setLojas] = useState(() => {
+  const [, setLojas] = useState(() => {
     try { return JSON.parse(localStorage.getItem('p4-lojas') || '[]'); } catch (e) { return []; }
   });
   useEffect(() => {
@@ -1251,34 +1091,6 @@ function App() {
     } finally { setSavingApi(false); }
   };
 
-  const importRef = useRef(null);
-  const exportJson = () => {
-    try {
-      const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const cliente = (d.loja || d.marketplace || 'relatorio').trim().replace(/[^a-zA-Z0-9\u00C0-\u017F ]+/g, '').replace(/\s+/g, '-') || 'relatorio';
-      const periodo = (d.periodoIni || '') + (d.periodoFim ? '_a_' + d.periodoFim : '');
-      a.href = url; a.download = cliente + (periodo ? '-' + periodo : '') + '.json';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) { alert('Não foi possível exportar os dados.'); }
-  };
-  const onImportFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      let imp;
-      try { imp = JSON.parse(reader.result); } catch (err) { alert('Arquivo inválido. Selecione um .json exportado por este gerador.'); return; }
-      if (!imp || typeof imp !== 'object') { alert('Arquivo inválido.'); return; }
-      const roll = confirm('Importar relatório.\n\nOK = iniciar um NOVO período (o relatório importado vira o comparativo).\nCancelar = apenas restaurar este relatório como está.');
-      setD(ensureObsBlocks(roll ? rollForward(imp) : fullRestore(imp)));
-    };
-    reader.readAsText(file);
-  };
-
   const Report = window.ReportA;
   const tn = (k) => d.status[k] || 'pos';
   const hasPages = (d.prev || []).length > 0;
@@ -1288,12 +1100,10 @@ function App() {
   const tacosCalc = window.calcTacos(d);
   const roasCalc = window.calcRoas(d);
 
-  const pickPreset = (p) => setD((prev) => ({ ...prev, periodoIni: p.ini, periodoFim: p.fim, periodicidade: p.per }));
   const periodDays = rangeDays(d.periodoIni, d.periodoFim);
   const essentialKeys = ['marketplace', 'periodoIni', 'periodoFim', 'faturamento', 'vendas', 'receitaAds', 'vendasAds', 'investimento'];
   const filledCount = essentialKeys.filter((k) => d[k] != null && String(d[k]).trim() !== '').length;
   const progressPct = Math.round((filledCount / essentialKeys.length) * 100);
-  const metaSummary = `ROAS ${d.metaRoas || '—'}x · ACOS ${d.metaAcos || '—'}% · TACOS ${d.metaTacos || '—'}%`;
   const obsBlocksArr = d.obsBlocks || [];
   const obsImgCount = obsBlocksArr.filter((b) => b.type === 'image').length;
   const obsHasText = obsBlocksArr.some((b) => b.type === 'text' && String(b.html || '').replace(/<[^>]+>/g, '').trim());

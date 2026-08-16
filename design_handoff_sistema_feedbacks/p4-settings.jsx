@@ -1,6 +1,6 @@
 // p4-settings.jsx — página de Configurações: conta, equipe, integrações, sobre.
 
-function Settings({ user, role, onManageUsers, onLogout, toast }) {
+function Settings({ user, role, onManageUsers, onLogout }) {
   const I = window.Icons;
   const isAdmin = role === 'admin';
   const live = !!(window.P4_API && window.P4_API.isLogged());

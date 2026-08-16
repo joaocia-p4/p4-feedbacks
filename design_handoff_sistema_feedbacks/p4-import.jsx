@@ -173,7 +173,6 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
   const existingNames = new Set((existing || []).map((c) => impNorm(c.loja)));
   const existingById = new Map((existing || []).map((c) => [String(c.id), c]));
   const ctx = { isAdmin, users: usersList, selfUser: user, existingNames, existingById };
-  const hasXLSX = !!window.XLSX;
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -212,7 +211,6 @@ function ImportClients({ user, role, users, existing, live, onClose, onDone, toa
 
   const valids = parsed.filter((p) => p.errors.length === 0);
   const invalids = parsed.filter((p) => p.errors.length > 0);
-  const totalMk = valids.reduce((a, p) => a + p.marketplaces.length, 0);
   const updateN = valids.filter((p) => p.isUpdate).length;
   const createN = valids.length - updateN;
 

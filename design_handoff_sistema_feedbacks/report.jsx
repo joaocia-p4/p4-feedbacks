@@ -784,7 +784,6 @@ function ReportA({ d }) {
   // fallback: se há blocos mas a paginação ainda não rodou (obsPages vazio), renderiza
   // tudo numa página — garante que o obsBodyRef exista para o efeito medir e paginar.
   const obsRenderPages = (useBlocks && !obsPages.length && obsBlocks.length) ? [obsBlocks] : obsPages;
-  const multiObs = obsRenderPages.length > 1;
   const raFooter = (
     <footer className="ra-foot">
       <span className="ra-foot-mid">Método P4 · Performance que move o seu negócio</span>
