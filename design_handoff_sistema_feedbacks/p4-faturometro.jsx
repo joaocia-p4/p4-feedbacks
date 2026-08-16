@@ -108,8 +108,8 @@ function FatChart({ serie, horaAtual }) {
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <b style={{ fontSize: 14 }}>Tendências em vendas brutas</b>
-        <span style={{ fontSize: 11.5, color: 'var(--muted)', display: 'flex', gap: 12 }}>
+        <b className="fat-card-tit">Tendências em vendas brutas</b>
+        <span className="fat-leg">
           <span><svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="var(--brand)" strokeWidth="2.5" /></svg> Hoje</span>
           <span><svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="var(--muted)" strokeWidth="2.5" strokeDasharray="5 4" /></svg> Ontem</span>
         </span>
@@ -364,7 +364,7 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
 
           <div className="fat-grid">
             <div className="card">
-              <b style={{ fontSize: 14 }}>Métricas-chave</b>
+              <b className="fat-card-tit">Métricas-chave</b>
               <div className="fat-metricas">
                 <Metrica label="Quantidade de vendas" valor={brNum(h.pedidos)} />
                 <Metrica label="Total de compradores" valor={brNum(h.compradores)} />
