@@ -1,0 +1,16 @@
+# ─── Fim de linha ────────────────────────────────────────────────────────────
+# O projeto nasceu no Windows e passou para o Mac. O git guarda LF, mas os
+# arquivos copiados do PC antigo ficaram com CRLF no disco — e `git status`
+# passou a mostrar 14 arquivos "modificados" sem uma linha de mudança real,
+# escondendo as mudanças de verdade. LF no repositório e no disco resolve.
+* text=auto eol=lf
+
+# Binários: nunca converter.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.pdf  binary
+*.ico  binary
+*.sqlite binary
+*.sqlite3 binary
