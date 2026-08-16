@@ -353,10 +353,15 @@ function App() {
     return null;
   });
   const [screen, setScreen] = useState(() => {
+    // O painel de parede abre direto no Faturômetro: sem isto, um reboot da TV
+    // cairia na lista de clientes e alguém teria de ir lá clicar.
+    try {
+      if (new URLSearchParams(window.location.search).get('tv') === '1') return 'faturometro';
+    } catch (e) {}
     // CS começa no painel; demais, na lista de clientes.
     try { const s = localStorage.getItem('p4-shell-user'); if (s && JSON.parse(s).papel === 'cs') return 'dashboard'; } catch (e) {}
     return 'clients';
-  }); // dashboard | clients | history | new | edit
+  }); // dashboard | clients | history | new | edit | faturometro
   const [clientId, setClientId] = useState(null);
   const [usersOpen, setUsersOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);

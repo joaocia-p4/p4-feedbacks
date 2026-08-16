@@ -205,6 +205,39 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
   const [atualizadoEm, setAtualizadoEm] = React.useState(null);
   const [forcando, setForcando] = React.useState(false);
 
+  // Modo TV — painel de parede. Nasce do endereço para o painel abrir pronto
+  // depois de um reboot, sem ninguém clicar em nada.
+  const [tv, setTv] = React.useState(() => {
+    try { return new URLSearchParams(window.location.search).get('tv') === '1'; }
+    catch (e) { return false; }
+  });
+
+  // A classe vive no BODY, não no contêiner da tela: a Sidebar é IRMÃ da tela
+  // (p4-shell.jsx renderiza as duas lado a lado), então uma classe na tela não
+  // alcançaria ela. O cleanup é obrigatório — sair da tela com a classe grudada
+  // deixaria o RESTO do sistema sem menu lateral.
+  React.useEffect(() => {
+    document.body.classList.toggle('fat-tv', tv);
+    return () => document.body.classList.remove('fat-tv');
+  }, [tv]);
+
+  // O endereço acompanha o modo, sem recarregar a página.
+  React.useEffect(() => {
+    try {
+      const u = new URL(window.location.href);
+      if (tv) u.searchParams.set('tv', '1'); else u.searchParams.delete('tv');
+      window.history.replaceState(null, '', u);
+    } catch (e) {}
+  }, [tv]);
+
+  // Esc só escuta enquanto o modo está ligado; sai junto com ele.
+  React.useEffect(() => {
+    if (!tv) return;
+    const aoTeclar = (e) => { if (e.key === 'Escape') setTv(false); };
+    document.addEventListener('keydown', aoTeclar);
+    return () => document.removeEventListener('keydown', aoTeclar);
+  }, [tv]);
+
   // Relógio de parede — é o que dá a sensação de "ao vivo" sem animação infinita.
   React.useEffect(() => {
     const t = setInterval(() => setRelogio(new Date()), 1000);
@@ -281,6 +314,9 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
 
   return (
     <div className="shell">
+      {tv
+        ? <button className="fat-tv-sair" onClick={() => setTv(false)} title="Sair do Modo TV (Esc)">Sair</button>
+        : null}
       <window.TopBar title="Faturômetro" user={user} role={role} onLogout={onLogout} onManageUsers={onManageUsers} />
       <div className="page">
         <div className="page-inner">
@@ -312,6 +348,7 @@ function Faturometro({ user, role, onLogout, onManageUsers, onOpenClient, toast 
             <button className="btn-ghost" onClick={forcar} disabled={forcando}>
               {forcando ? 'conferindo…' : 'Conferir agora'}
             </button>
+            <button className="btn-ghost" onClick={() => setTv(true)}>Modo TV</button>
           </div>
 
           <div className="fat-grid">
